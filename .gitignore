@@ -1,0 +1,31 @@
+# CMake 构建目录
+/build/
+/build-*/
+
+# 误在源码目录中生成的 CMake 文件
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+Makefile
+Testing/
+
+# 编译产物
+*.o
+*.obj
+*.a
+*.so
+*.dll
+*.exe
+
+# 运行时文件
+/logs/
+*.log
+*.pid
+*.sock
+
+# 编辑器临时文件
+.vscode/
+.idea/
+*.swp
+*~
