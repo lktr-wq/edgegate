@@ -26,21 +26,54 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     )
 endif()
 
+# 创建EdgeGate核心静态库。
+# HTTP解析器等可复用代码放在该库中。
+add_library(
+    edgegate_core
+    STATIC
+    src/http/request_parser.cpp
+)
+
+# AI-CODE-BEGIN: S3-RESPONSE-PARSER-BUILD
+# 阶段3新增响应解析器；它和请求解析器共同组成可复用的HTTP核心库。
+target_sources(
+    edgegate_core
+    PRIVATE
+    src/http/response_parser.cpp
+)
+# AI-CODE-END: S3-RESPONSE-PARSER-BUILD
+
+# PUBLIC表示：
+# edgegate_core自己和链接它的目标都能找到include目录。
+target_include_directories(
+    edgegate_core
+    PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
 #创建程序目标名称 = edgegate 源文件 = apps/edgegate_main.cpp
 add_executable(
     edgegate
     apps/edgegate_main.cpp
 )
 
+# 正式程序链接核心库。
+target_link_libraries(
+    edgegate
+    PRIVATE
+    edgegate_core
+)
 
+# 创建管理程序。
 add_executable(
     edgegatectl
     apps/edgegatectl_main.cpp
 )
 
-#启用测试
+#启用CTest
 enable_testing()
 
+# 保留阶段1的冒烟测试。
 add_executable(
     edgegate_smoke
     tests/smoke_test.cpp
@@ -50,4 +83,38 @@ add_executable(
 add_test(
     NAME edgegate_smoke
     COMMAND edgegate_smoke
+)
+
+# 查找Ubuntu中已经安装的GoogleTest。
+find_package(GTest REQUIRED)
+
+# 引入gtest_discover_tests()命令。
+include(GoogleTest)
+
+# 创建HTTP请求解析器测试程序。
+add_executable(
+    edgegate_http_parser_tests
+    tests/http_request_parser_test.cpp
+)
+
+# AI-CODE-BEGIN: S3-RESPONSE-PARSER-TEST-BUILD
+# 把响应解析测试编入同一个GoogleTest程序，由CTest统一发现。
+target_sources(
+    edgegate_http_parser_tests
+    PRIVATE
+    tests/http_response_parser_test.cpp
+)
+# AI-CODE-END: S3-RESPONSE-PARSER-TEST-BUILD
+
+# 测试程序同时链接解析器实现和GoogleTest入口。
+target_link_libraries(
+    edgegate_http_parser_tests
+    PRIVATE
+    edgegate_core
+    GTest::gtest_main
+)
+
+# 自动发现TEST(...)定义的测试用例并注册到CTest。
+gtest_discover_tests(
+    edgegate_http_parser_tests
 )
