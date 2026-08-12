@@ -173,5 +173,26 @@ TEST(RouteTableTest, ReportsMissingHealthTargetWithoutMutation)
         RouteLookupStatus::kMatched);
 }
 
+TEST(RouteTableTest, RejectsInvalidHostSyntaxAndPort)
+{
+    EXPECT_THROW(
+        RouteTable({route(
+            "space", "bad host.example", "/", {upstream("u", 9001)})}),
+        std::invalid_argument);
+    EXPECT_THROW(
+        RouteTable({route(
+            "label", "bad..example", "/", {upstream("u", 9001)})}),
+        std::invalid_argument);
+
+    RouteTable table({route(
+        "api", "api.example.com", "/", {upstream("u", 9001)})});
+    EXPECT_EQ(
+        table.lookup("api.example.com:70000", "/").status,
+        RouteLookupStatus::kNoRoute);
+    EXPECT_EQ(
+        table.lookup("bad host.example", "/").status,
+        RouteLookupStatus::kNoRoute);
+}
+
 } // namespace
 // AI-CODE-END: S6-ROUTE-TABLE-TESTS

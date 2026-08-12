@@ -46,8 +46,8 @@
 | `S5-PROXY-DEMO` / `S5-PROXY-DEMO-BUILD` | 5 | `apps/proxy_demo_main.cpp`、`CMakeLists.txt` | `18082 -> 19080` 可运行阶段验收程序 | 尚不是最终可配置产品入口 | Ubuntu 严格构建通过 |
 | `S5-PROXY-INTEGRATION-TESTS` / `S5-PROXY-TEST-BUILD` | 5 | `tests/proxy_integration_test.cpp`、`CMakeLists.txt` | 真实 TCP 上游、四类响应、POST、HEAD、Keep-Alive、半关闭、并发、400/502 和 fd 回收 | 状态机失败路径是否有证据 | 10/10；全量 Sanitizer 73/73 |
 | `S5-PROXY-STATE-MACHINE-BUILD` | 5 | `CMakeLists.txt` | 将代理会话与服务器加入核心库 | 正式目标是否复用同一实现 | 全量 CTest 73/73 |
-| `S6-ROUTE-TABLE-API` / `S6-ROUTE-TABLE-IMPLEMENTATION` | 6 | `include/edgegate/routing/route_table.h`、`src/routing/route_table.cpp` | Host 规范化、精确/通配优先级、最长路径前缀、健康上游轮询 | 路由优先级是否符合产品预期 | 普通与 Sanitizer 10/10 |
-| `S6-ROUTE-TABLE-TESTS` / `S6-ROUTE-TABLE-TEST-BUILD` | 6 | `tests/route_table_test.cpp`、`CMakeLists.txt` | 匹配优先级、端口、查询串、轮询、无健康节点和配置冲突测试 | 字面前缀与通配语义 | 10/10 |
+| `S6-ROUTE-TABLE-API` / `S6-ROUTE-TABLE-IMPLEMENTATION` | 6 | `include/edgegate/routing/route_table.h`、`src/routing/route_table.cpp` | Host 语法/端口规范化、精确/通配优先级、最长路径前缀、健康上游轮询 | 路由优先级是否符合产品预期 | 普通与 Sanitizer 11/11 |
+| `S6-ROUTE-TABLE-TESTS` / `S6-ROUTE-TABLE-TEST-BUILD` | 6 | `tests/route_table_test.cpp`、`CMakeLists.txt` | 匹配优先级、Host语法、端口、查询串、轮询、无健康节点和配置冲突测试 | 字面前缀与通配语义 | 11/11 |
 | `S6-ROUTE-TABLE-BUILD` | 6 | `CMakeLists.txt` | 将纯 C++ 路由核心加入核心库 | YAML 接入前后是否复用同一规则 | 严格编译零警告 |
 
 ## 贡献边界

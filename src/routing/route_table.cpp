@@ -19,6 +19,68 @@ bool all_decimal_digits(std::string_view value) noexcept
            });
 }
 
+bool valid_port(std::string_view value) noexcept
+{
+    if (!all_decimal_digits(value)) {
+        return false;
+    }
+    std::uint32_t port = 0;
+    for (char character : value) {
+        port = port * 10U + static_cast<std::uint32_t>(character - '0');
+        if (port > 65535U) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool valid_normalized_host(std::string_view host) noexcept
+{
+    if (host.empty()) {
+        return false;
+    }
+
+    if (host.front() == '[') {
+        if (host.size() < 3 || host.back() != ']') {
+            return false;
+        }
+        const std::string_view address = host.substr(1, host.size() - 2);
+        return !address.empty() &&
+               std::all_of(address.begin(), address.end(), [](char character) {
+                   const auto value = static_cast<unsigned char>(character);
+                   return std::isxdigit(value) != 0 ||
+                          character == ':' || character == '.';
+               });
+    }
+
+    if (host.size() > 253) {
+        return false;
+    }
+    std::size_t label_start = 0;
+    while (label_start < host.size()) {
+        const std::size_t dot = host.find('.', label_start);
+        const std::size_t label_end =
+            dot == std::string_view::npos ? host.size() : dot;
+        const std::string_view label =
+            host.substr(label_start, label_end - label_start);
+        if (label.empty() || label.size() > 63 ||
+            label.front() == '-' || label.back() == '-') {
+            return false;
+        }
+        for (char character : label) {
+            const auto value = static_cast<unsigned char>(character);
+            if (std::isalnum(value) == 0 && character != '-') {
+                return false;
+            }
+        }
+        if (dot == std::string_view::npos) {
+            break;
+        }
+        label_start = dot + 1;
+    }
+    return true;
+}
+
 } // namespace
 
 RouteTable::RouteTable(std::vector<RouteDefinition> routes)
@@ -187,7 +249,7 @@ std::string RouteTable::normalize_host(std::string_view host)
         }
         if (bracket + 1 < host.size()) {
             if (host[bracket + 1] != ':' ||
-                !all_decimal_digits(host.substr(bracket + 2))) {
+                !valid_port(host.substr(bracket + 2))) {
                 return {};
             }
         }
@@ -196,7 +258,7 @@ std::string RouteTable::normalize_host(std::string_view host)
         const std::size_t colon = host.rfind(':');
         if (colon != std::string_view::npos) {
             if (host.find(':') != colon ||
-                !all_decimal_digits(host.substr(colon + 1))) {
+                !valid_port(host.substr(colon + 1))) {
                 return {};
             }
             host = host.substr(0, colon);
@@ -218,6 +280,9 @@ std::string RouteTable::normalize_host(std::string_view host)
         [](unsigned char character) {
             return static_cast<char>(std::tolower(character));
         });
+    if (!valid_normalized_host(normalized)) {
+        return {};
+    }
     return normalized;
 }
 
