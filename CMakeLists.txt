@@ -43,6 +43,18 @@ target_sources(
 )
 # AI-CODE-END: S3-RESPONSE-PARSER-BUILD
 
+# AI-CODE-BEGIN: S4-REACTOR-BUILD
+# 阶段4网络基础：有界字节缓冲、LT epoll事件循环、连接和验收Echo服务。
+target_sources(
+    edgegate_core
+    PRIVATE
+    src/net/byte_buffer.cpp
+    src/net/event_loop.cpp
+    src/net/echo_connection.cpp
+    src/net/reactor_echo_server.cpp
+)
+# AI-CODE-END: S4-REACTOR-BUILD
+
 # PUBLIC表示：
 # edgegate_core自己和链接它的目标都能找到include目录。
 target_include_directories(
@@ -69,6 +81,19 @@ add_executable(
     edgegatectl
     apps/edgegatectl_main.cpp
 )
+
+# AI-CODE-BEGIN: S4-REACTOR-DEMO-BUILD
+# 独立演示程序不替换阶段2代理，避免学习基线和Reactor验收相互混淆。
+add_executable(
+    edgegate_reactor_demo
+    apps/reactor_demo_main.cpp
+)
+target_link_libraries(
+    edgegate_reactor_demo
+    PRIVATE
+    edgegate_core
+)
+# AI-CODE-END: S4-REACTOR-DEMO-BUILD
 
 #启用CTest
 enable_testing()
@@ -118,3 +143,25 @@ target_link_libraries(
 gtest_discover_tests(
     edgegate_http_parser_tests
 )
+
+# AI-CODE-BEGIN: S4-REACTOR-TEST-BUILD
+find_package(Threads REQUIRED)
+
+add_executable(
+    edgegate_reactor_tests
+    tests/byte_buffer_test.cpp
+    tests/unique_fd_test.cpp
+    tests/event_loop_test.cpp
+    tests/reactor_echo_integration_test.cpp
+)
+target_link_libraries(
+    edgegate_reactor_tests
+    PRIVATE
+    edgegate_core
+    GTest::gtest_main
+    Threads::Threads
+)
+gtest_discover_tests(
+    edgegate_reactor_tests
+)
+# AI-CODE-END: S4-REACTOR-TEST-BUILD
