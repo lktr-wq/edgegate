@@ -64,6 +64,14 @@ target_sources(
 )
 # AI-CODE-END: S5-PROXY-STATE-MACHINE-BUILD
 
+# AI-CODE-BEGIN: S6-ROUTE-TABLE-BUILD
+target_sources(
+    edgegate_core
+    PRIVATE
+    src/routing/route_table.cpp
+)
+# AI-CODE-END: S6-ROUTE-TABLE-BUILD
+
 # PUBLIC表示：
 # edgegate_core自己和链接它的目标都能找到include目录。
 target_include_directories(
@@ -203,3 +211,19 @@ gtest_discover_tests(
     edgegate_proxy_tests
 )
 # AI-CODE-END: S5-PROXY-TEST-BUILD
+
+# AI-CODE-BEGIN: S6-ROUTE-TABLE-TEST-BUILD
+add_executable(
+    edgegate_route_tests
+    tests/route_table_test.cpp
+)
+target_link_libraries(
+    edgegate_route_tests
+    PRIVATE
+    edgegate_core
+    GTest::gtest_main
+)
+gtest_discover_tests(
+    edgegate_route_tests
+)
+# AI-CODE-END: S6-ROUTE-TABLE-TEST-BUILD
