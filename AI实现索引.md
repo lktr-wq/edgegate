@@ -40,6 +40,12 @@
 | `S4-REACTOR-INTEGRATION-TESTS` | 4 | `tests/reactor_echo_integration_test.cpp` | 顺序消息、24 并发、慢连接隔离、512 KiB 背压和 50 次 fd 回收 | 为什么 Echo 只验证网络发动机 | 5 项通过 |
 | `S4-REACTOR-DEMO` / `S4-REACTOR-DEMO-BUILD` | 4 | `apps/reactor_demo_main.cpp`、`CMakeLists.txt` | 可运行的阶段 4 Echo 验收程序 | 它不是最终代理产品 | Ubuntu 构建通过 |
 | `S4-REACTOR-BUILD` / `S4-REACTOR-TEST-BUILD` | 4 | `CMakeLists.txt` | Reactor 源码、线程库和 GoogleTest 目标接入 | 严格编译与测试发现 | 全量 CTest 61/61 通过 |
+| `S5-REQUEST-RAW-ACCESS` | 5 | 请求解析器头文件与实现 | 暴露已完成请求的精确原始字节 | 转发为什么不能重新拼字符串猜长度 | 请求与代理回归通过 |
+| `S5-PROXY-SESSION-API` / `S5-PROXY-SESSION-IMPLEMENTATION` | 5 | `include/edgegate/proxy/proxy_session.h`、`src/proxy/proxy_session.cpp` | 客户端/上游端点共享会话、非阻塞 connect、请求响应状态迁移、错误响应和顺序 Keep-Alive | 两个 fd 如何属于同一请求 | 10 项代理集成测试通过 |
+| `S5-PROXY-SERVER-API` / `S5-PROXY-SERVER-IMPLEMENTATION` | 5 | `include/edgegate/proxy/proxy_server.h`、`src/proxy/proxy_server.cpp` | 非阻塞代理监听和会话创建 | Listener 与 Session 的职责边界 | 并发与 fd 回收通过 |
+| `S5-PROXY-DEMO` / `S5-PROXY-DEMO-BUILD` | 5 | `apps/proxy_demo_main.cpp`、`CMakeLists.txt` | `18082 -> 19080` 可运行阶段验收程序 | 尚不是最终可配置产品入口 | Ubuntu 严格构建通过 |
+| `S5-PROXY-INTEGRATION-TESTS` / `S5-PROXY-TEST-BUILD` | 5 | `tests/proxy_integration_test.cpp`、`CMakeLists.txt` | 真实 TCP 上游、四类响应、POST、HEAD、Keep-Alive、半关闭、并发、400/502 和 fd 回收 | 状态机失败路径是否有证据 | 10/10；全量 Sanitizer 73/73 |
+| `S5-PROXY-STATE-MACHINE-BUILD` | 5 | `CMakeLists.txt` | 将代理会话与服务器加入核心库 | 正式目标是否复用同一实现 | 全量 CTest 73/73 |
 
 ## 贡献边界
 

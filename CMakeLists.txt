@@ -55,6 +55,15 @@ target_sources(
 )
 # AI-CODE-END: S4-REACTOR-BUILD
 
+# AI-CODE-BEGIN: S5-PROXY-STATE-MACHINE-BUILD
+target_sources(
+    edgegate_core
+    PRIVATE
+    src/proxy/proxy_session.cpp
+    src/proxy/proxy_server.cpp
+)
+# AI-CODE-END: S5-PROXY-STATE-MACHINE-BUILD
+
 # PUBLIC表示：
 # edgegate_core自己和链接它的目标都能找到include目录。
 target_include_directories(
@@ -94,6 +103,18 @@ target_link_libraries(
     edgegate_core
 )
 # AI-CODE-END: S4-REACTOR-DEMO-BUILD
+
+# AI-CODE-BEGIN: S5-PROXY-DEMO-BUILD
+add_executable(
+    edgegate_proxy_demo
+    apps/proxy_demo_main.cpp
+)
+target_link_libraries(
+    edgegate_proxy_demo
+    PRIVATE
+    edgegate_core
+)
+# AI-CODE-END: S5-PROXY-DEMO-BUILD
 
 #启用CTest
 enable_testing()
@@ -165,3 +186,20 @@ gtest_discover_tests(
     edgegate_reactor_tests
 )
 # AI-CODE-END: S4-REACTOR-TEST-BUILD
+
+# AI-CODE-BEGIN: S5-PROXY-TEST-BUILD
+add_executable(
+    edgegate_proxy_tests
+    tests/proxy_integration_test.cpp
+)
+target_link_libraries(
+    edgegate_proxy_tests
+    PRIVATE
+    edgegate_core
+    GTest::gtest_main
+    Threads::Threads
+)
+gtest_discover_tests(
+    edgegate_proxy_tests
+)
+# AI-CODE-END: S5-PROXY-TEST-BUILD

@@ -2,6 +2,7 @@
 
 // AI-CODE-BEGIN: S3-REQUEST-PARSER-IMPLEMENTATION
 #include <limits>
+#include <stdexcept>
 
 namespace edgegate::http {
 namespace {
@@ -123,8 +124,14 @@ RequestParser::RequestParser(
     std::size_t max_header_size,
     std::size_t max_body_size)
     : max_header_size_(max_header_size),
-      max_body_size_(max_body_size)
+      max_body_size_(max_body_size),
+      max_message_size_(0)
 {
+    if (max_body_size_ >
+        std::numeric_limits<std::size_t>::max() - max_header_size_) {
+        throw std::invalid_argument("request parser size limit overflow");
+    }
+    max_message_size_ = max_header_size_ + max_body_size_;
 }
 
 ParseError RequestParser::parse_request_line(
@@ -315,6 +322,12 @@ ParseResult RequestParser::consume(std::string_view chunk)
     }
 
     if (!chunk.empty()) {
+        if (buffer_.size() > max_message_size_ ||
+            chunk.size() > max_message_size_ - buffer_.size()) {
+            status_ = ParseStatus::kError;
+            error_ = ParseError::kBodyTooLarge;
+            return {status_, error_};
+        }
         buffer_.append(chunk.data(), chunk.size());
     }
 
@@ -427,6 +440,16 @@ std::string_view RequestParser::body() const noexcept
     }
     return {buffer_.data() + header_bytes_, content_length_};
 }
+
+// AI-CODE-BEGIN: S5-REQUEST-RAW-ACCESS
+std::string_view RequestParser::raw_message() const noexcept
+{
+    if (status_ != ParseStatus::kMessageComplete) {
+        return {};
+    }
+    return {buffer_.data(), message_bytes_};
+}
+// AI-CODE-END: S5-REQUEST-RAW-ACCESS
 
 const std::vector<HeaderField>& RequestParser::headers() const noexcept
 {

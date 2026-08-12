@@ -60,6 +60,11 @@ public:
     std::string_view version() const noexcept;
     std::string_view body() const noexcept;
 
+    // AI-CODE-BEGIN: S5-REQUEST-RAW-ACCESS
+    // 返回一条已经完成的原始请求，供代理按真实字节转发给上游。
+    std::string_view raw_message() const noexcept;
+    // AI-CODE-END: S5-REQUEST-RAW-ACCESS
+
     const std::vector<HeaderField>& headers() const noexcept;
 
     std::optional<std::string_view> header_value(
@@ -73,6 +78,7 @@ private:
 
     std::size_t max_header_size_;
     std::size_t max_body_size_;
+    std::size_t max_message_size_;
     std::string buffer_;
 
     std::size_t header_fields_start_{0};

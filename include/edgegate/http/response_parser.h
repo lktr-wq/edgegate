@@ -98,6 +98,7 @@ private:
     std::string request_method_;
     std::size_t max_header_size_;
     std::size_t max_body_size_;
+    std::size_t max_message_size_;
     std::string buffer_;
 
     bool status_line_parsed_{false};

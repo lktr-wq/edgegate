@@ -2,6 +2,7 @@
 
 // AI-CODE-BEGIN: S3-RESPONSE-PARSER-IMPLEMENTATION
 #include <limits>
+#include <stdexcept>
 #include <utility>
 
 namespace edgegate::http {
@@ -130,8 +131,14 @@ ResponseParser::ResponseParser(
     std::size_t max_body_size)
     : request_method_(std::move(request_method)),
       max_header_size_(max_header_size),
-      max_body_size_(max_body_size)
+      max_body_size_(max_body_size),
+      max_message_size_(0)
 {
+    if (max_body_size_ >
+        std::numeric_limits<std::size_t>::max() - max_header_size_) {
+        throw std::invalid_argument("response parser size limit overflow");
+    }
+    max_message_size_ = max_header_size_ + max_body_size_;
 }
 
 ResponseParseError ResponseParser::parse_status_line(
@@ -496,6 +503,12 @@ ResponseParseResult ResponseParser::consume(std::string_view chunk)
     }
 
     if (!chunk.empty()) {
+        if (buffer_.size() > max_message_size_ ||
+            chunk.size() > max_message_size_ - buffer_.size()) {
+            status_ = ParseStatus::kError;
+            error_ = ResponseParseError::kBodyTooLarge;
+            return {status_, error_};
+        }
         buffer_.append(chunk.data(), chunk.size());
     }
 

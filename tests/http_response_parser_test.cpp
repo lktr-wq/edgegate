@@ -310,6 +310,16 @@ TEST(HttpResponseParserTest, EnforcesHeaderAndBodyLimits)
     EXPECT_EQ(result.error, ResponseParseError::kBodyTooLarge);
 }
 
+TEST(HttpResponseParserTest, RejectsWireBytesBeforeGrowingPastAbsoluteLimit)
+{
+    ResponseParser parser("GET", 32, 4);
+    const auto result = parser.consume(std::string(37, 'x'));
+
+    EXPECT_EQ(result.status, ParseStatus::kError);
+    EXPECT_EQ(result.error, ResponseParseError::kBodyTooLarge);
+    EXPECT_EQ(parser.buffered_bytes(), 0U);
+}
+
 TEST(HttpResponseParserTest, KeepsTerminalResultStable)
 {
     ResponseParser parser;
