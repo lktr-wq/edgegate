@@ -322,6 +322,7 @@ std::string receive_response(int fd, std::string method = "GET")
 const std::string kGet =
     "GET /hello HTTP/1.1\r\nHost: example.test\r\n\r\n";
 
+// 测试：代理应把客户端请求原样发给上游，并把 Content-Length 响应完整返回客户端。
 TEST(ProxyIntegrationTest, ForwardsContentLengthResponse)
 {
     const std::string response =
@@ -338,6 +339,7 @@ TEST(ProxyIntegrationTest, ForwardsContentLengthResponse)
     EXPECT_EQ(proxy.stats()->completed_requests.load(), 1U);
 }
 
+// 测试：同一客户端的顺序请求应能分别接收 chunked 响应和以上游关闭为边界的响应。
 TEST(ProxyIntegrationTest, ForwardsChunkedAndCloseDelimitedResponses)
 {
     const std::string chunked =
@@ -358,6 +360,7 @@ TEST(ProxyIntegrationTest, ForwardsChunkedAndCloseDelimitedResponses)
     EXPECT_EQ(proxy.stats()->completed_requests.load(), 2U);
 }
 
+// 测试：客户端 Keep-Alive 连接应支持顺序发送两次请求，并在第二个 close 响应后结束连接。
 TEST(ProxyIntegrationTest, SupportsSequentialClientKeepAlive)
 {
     const std::string first =
@@ -379,6 +382,7 @@ TEST(ProxyIntegrationTest, SupportsSequentialClientKeepAlive)
     upstream.wait();
 }
 
+// 测试：客户端发送缺少 Host 的畸形 HTTP/1.1 请求时，代理应返回 400 并累计客户端错误。
 TEST(ProxyIntegrationTest, Returns400ForMalformedRequest)
 {
     std::uint16_t unused_port = 0;
@@ -392,6 +396,7 @@ TEST(ProxyIntegrationTest, Returns400ForMalformedRequest)
     EXPECT_EQ(proxy.stats()->client_errors.load(), 1U);
 }
 
+// 测试：上游拒绝连接或在响应完成前关闭时，代理都应向客户端返回 502 Bad Gateway。
 TEST(ProxyIntegrationTest, Returns502WhenUpstreamRefusesOrClosesEarly)
 {
     std::uint16_t refused_port = 0;
@@ -418,6 +423,7 @@ TEST(ProxyIntegrationTest, Returns502WhenUpstreamRefusesOrClosesEarly)
     closing_upstream.wait();
 }
 
+// 测试：代理应完整转发 Content-Length 请求体，并正确识别 HEAD 响应没有实际正文。
 TEST(ProxyIntegrationTest, ForwardsContentLengthRequestBodyAndHeadResponse)
 {
     const std::string post_response =
@@ -445,6 +451,7 @@ TEST(ProxyIntegrationTest, ForwardsContentLengthRequestBodyAndHeadResponse)
     EXPECT_EQ(upstream.requests()[1], head);
 }
 
+// 测试：客户端关闭发送方向但仍保留接收方向时，代理应继续完成响应并正常关闭会话。
 TEST(ProxyIntegrationTest, CompletesResponseAfterClientHalfClose)
 {
     const std::string response =
@@ -462,6 +469,7 @@ TEST(ProxyIntegrationTest, CompletesResponseAfterClientHalfClose)
     upstream.wait();
 }
 
+// 测试：上游返回无法解析的非 HTTP 数据时，代理应返回 502 并累计上游错误。
 TEST(ProxyIntegrationTest, RejectsMalformedUpstreamResponseWith502)
 {
     ScriptedUpstream upstream({"NOT-HTTP\r\n\r\n"});
@@ -477,6 +485,7 @@ TEST(ProxyIntegrationTest, RejectsMalformedUpstreamResponseWith502)
     EXPECT_EQ(proxy.stats()->upstream_errors.load(), 1U);
 }
 
+// 测试：16 个客户端同时建立代理会话时，每个客户端都应独立收到正确响应。
 TEST(ProxyIntegrationTest, ServesConcurrentProxySessions)
 {
     constexpr int client_count = 16;
@@ -509,6 +518,7 @@ TEST(ProxyIntegrationTest, ServesConcurrentProxySessions)
     EXPECT_EQ(proxy.stats()->completed_requests.load(), client_count);
 }
 
+// 测试：连续完成 40 次代理会话并销毁服务后，打开的 fd 数量应恢复到测试前水平。
 TEST(ProxyIntegrationTest, ReleasesAllDescriptorsAfterRepeatedSessions)
 {
     const std::size_t descriptors_before = count_open_file_descriptors();

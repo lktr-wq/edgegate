@@ -33,6 +33,7 @@ RouteDefinition route(
         std::move(upstreams)};
 }
 
+// 测试：Host 匹配应忽略字母大小写和请求 Host 中附带的端口号。
 TEST(RouteTableTest, MatchesHostCaseInsensitivelyAndIgnoresPort)
 {
     RouteTable table({route(
@@ -44,6 +45,7 @@ TEST(RouteTableTest, MatchesHostCaseInsensitivelyAndIgnoresPort)
     EXPECT_EQ(result.upstream->id, "one");
 }
 
+// 测试：精确 Host 和通配 Host 同时匹配时，应优先选择精确 Host 路由。
 TEST(RouteTableTest, ExactHostBeatsWildcardHost)
 {
     RouteTable table({
@@ -55,6 +57,7 @@ TEST(RouteTableTest, ExactHostBeatsWildcardHost)
     EXPECT_EQ(result.route_id, "exact");
 }
 
+// 测试：多个通配 Host 都匹配时，应选择后缀更长、范围更具体的路由。
 TEST(RouteTableTest, MostSpecificWildcardSuffixWins)
 {
     RouteTable table({
@@ -70,6 +73,7 @@ TEST(RouteTableTest, MostSpecificWildcardSuffixWins)
     EXPECT_EQ(result.route_id, "narrow");
 }
 
+// 测试：`*.example.com` 只能匹配其子域名，不能匹配裸域名 `example.com`。
 TEST(RouteTableTest, WildcardDoesNotMatchBareSuffix)
 {
     RouteTable table({route(
@@ -80,6 +84,7 @@ TEST(RouteTableTest, WildcardDoesNotMatchBareSuffix)
         RouteLookupStatus::kNoRoute);
 }
 
+// 测试：同一 Host 下应选择最长路径前缀，且查询字符串不能参与路径匹配。
 TEST(RouteTableTest, LongestPathPrefixWinsAndQueryIsIgnored)
 {
     RouteTable table({
@@ -97,6 +102,7 @@ TEST(RouteTableTest, LongestPathPrefixWinsAndQueryIsIgnored)
     EXPECT_EQ(result.route_id, "users");
 }
 
+// 测试：当前路由采用字面前缀规则，因此 `/api` 也会匹配以 `/api` 开头的 `/apix`。
 TEST(RouteTableTest, UsesLiteralPrefixSemantics)
 {
     RouteTable table({route(
@@ -107,6 +113,7 @@ TEST(RouteTableTest, UsesLiteralPrefixSemantics)
         RouteLookupStatus::kMatched);
 }
 
+// 测试：同一路由应只在健康上游之间轮询，并按顺序循环选择可用节点。
 TEST(RouteTableTest, RoundRobinsOnlyAcrossHealthyUpstreams)
 {
     RouteTable table({route(
@@ -127,6 +134,7 @@ TEST(RouteTableTest, RoundRobinsOnlyAcrossHealthyUpstreams)
     EXPECT_EQ(table.lookup("api.example.com", "/").upstream->id, "one");
 }
 
+// 测试：Host 无匹配路由与路由存在但全部上游不健康，应返回两种不同状态。
 TEST(RouteTableTest, DistinguishesNoRouteFromNoHealthyUpstream)
 {
     auto only = upstream("one", 9001);
@@ -143,6 +151,7 @@ TEST(RouteTableTest, DistinguishesNoRouteFromNoHealthyUpstream)
     EXPECT_FALSE(unhealthy.upstream.has_value());
 }
 
+// 测试：空路由 ID、非法 Host/路径、重复定义和无上游等错误配置应在构造时拒绝。
 TEST(RouteTableTest, RejectsInvalidAndDuplicateDefinitions)
 {
     EXPECT_THROW(
@@ -161,6 +170,7 @@ TEST(RouteTableTest, RejectsInvalidAndDuplicateDefinitions)
         std::invalid_argument);
 }
 
+// 测试：更新不存在的路由或上游健康状态应失败，并且不能改变原有有效路由。
 TEST(RouteTableTest, ReportsMissingHealthTargetWithoutMutation)
 {
     RouteTable table({route(
@@ -173,6 +183,7 @@ TEST(RouteTableTest, ReportsMissingHealthTargetWithoutMutation)
         RouteLookupStatus::kMatched);
 }
 
+// 测试：配置或查询中的非法 Host 语法、标签格式和端口应被拒绝或判定为无路由。
 TEST(RouteTableTest, RejectsInvalidHostSyntaxAndPort)
 {
     EXPECT_THROW(

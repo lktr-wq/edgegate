@@ -78,6 +78,7 @@ private:
     int descriptor_;
 };
 
+// 测试：fd 变为可读后 EventLoop 应调用对应处理器，并允许处理器在回调中安全移除自己。
 TEST(EventLoopTest, DispatchesReadyDescriptorAndSafelyRemovesIt)
 {
     EventLoop loop;
@@ -105,12 +106,14 @@ TEST(EventLoopTest, DispatchesReadyDescriptorAndSafelyRemovesIt)
     EXPECT_EQ(loop.handler_count(), 0U);
 }
 
+// 测试：没有任何 fd 就绪且等待时间到期时，单次事件循环应返回 0 个已处理事件。
 TEST(EventLoopTest, ReturnsZeroOnTimeout)
 {
     EventLoop loop;
     EXPECT_EQ(loop.run_once(0), 0);
 }
 
+// 测试：同一个 fd 已注册后再次注册必须被拒绝，避免一个事件被两个处理器错误接管。
 TEST(EventLoopTest, RejectsDuplicateDescriptor)
 {
     EventLoop loop;

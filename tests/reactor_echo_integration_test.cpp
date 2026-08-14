@@ -181,6 +181,7 @@ std::size_t count_open_file_descriptors()
     return count;
 }
 
+// 测试：同一客户端连接连续发送多条消息时，Reactor 服务器应逐条原样回显并回收连接。
 TEST(ReactorEchoIntegrationTest, EchoesMultipleSequentialMessages)
 {
     RunningServer server;
@@ -197,6 +198,7 @@ TEST(ReactorEchoIntegrationTest, EchoesMultipleSequentialMessages)
     EXPECT_EQ(server.stats()->closed_connections.load(), 1U);
 }
 
+// 测试：24 个客户端并发连接时，每个客户端都应收到自己的完整回显数据。
 TEST(ReactorEchoIntegrationTest, ServesConcurrentClients)
 {
     RunningServer server;
@@ -228,6 +230,7 @@ TEST(ReactorEchoIntegrationTest, ServesConcurrentClients)
     EXPECT_EQ(server.stats()->closed_connections.load(), client_count);
 }
 
+// 测试：一个只发送部分数据的慢客户端不应阻塞另一个快速客户端完成收发。
 TEST(ReactorEchoIntegrationTest, SlowClientDoesNotBlockFastClient)
 {
     RunningServer server;
@@ -249,6 +252,7 @@ TEST(ReactorEchoIntegrationTest, SlowClientDoesNotBlockFastClient)
     EXPECT_EQ(fast_result.get(), "fast-client-still-progresses");
 }
 
+// 测试：发送 512 KiB 大数据并触发背压时，服务器仍应无丢失、无乱序地完整回显。
 TEST(ReactorEchoIntegrationTest, PreservesLargePayloadUnderBackpressure)
 {
     const BufferWatermarks watermarks{
@@ -278,6 +282,7 @@ TEST(ReactorEchoIntegrationTest, PreservesLargePayloadUnderBackpressure)
     EXPECT_EQ(server.stats()->socket_errors.load(), 0U);
 }
 
+// 测试：连续建立 50 次连接并销毁服务器后，全部 Socket fd 应被释放而不持续增长。
 TEST(ReactorEchoIntegrationTest, ReleasesDescriptorsAfterServerDestruction)
 {
     const std::size_t descriptors_before = count_open_file_descriptors();

@@ -30,6 +30,7 @@ const std::string kChunkedResponse =
     "5\r\npedia\r\n"
     "0\r\n\r\n";
 
+// 测试：一次传入带 Content-Length 的完整响应时，应解析状态行、Header、正文和原始消息。
 TEST(HttpResponseParserTest, ParsesContentLengthResponse)
 {
     ResponseParser parser;
@@ -47,6 +48,7 @@ TEST(HttpResponseParserTest, ParsesContentLengthResponse)
     EXPECT_EQ(*parser.header_value("CONTENT-TYPE"), "text/plain");
 }
 
+// 测试：声明 5 字节正文但首批只收到 2 字节时，应等待剩余 3 字节后再判定响应完整。
 TEST(HttpResponseParserTest, WaitsForCompleteContentLengthBody)
 {
     ResponseParser parser;
@@ -61,6 +63,7 @@ TEST(HttpResponseParserTest, WaitsForCompleteContentLengthBody)
     EXPECT_EQ(parser.body(), "hello");
 }
 
+// 测试：穷举固定长度响应的所有两段切分位置，任意 TCP 分片都应得到相同正文和完成状态。
 TEST(HttpResponseParserTest, CompletesFixedResponseAtEveryTwoChunkSplit)
 {
     for (std::size_t split = 0; split <= kFixedResponse.size(); ++split) {
@@ -76,6 +79,7 @@ TEST(HttpResponseParserTest, CompletesFixedResponseAtEveryTwoChunkSplit)
     }
 }
 
+// 测试：一次输入含当前响应和下一条响应时，只完成当前响应，并把后续字节留给调用者处理。
 TEST(HttpResponseParserTest, LeavesNextResponseBytesForCaller)
 {
     ResponseParser parser;
@@ -88,6 +92,7 @@ TEST(HttpResponseParserTest, LeavesNextResponseBytesForCaller)
     EXPECT_EQ(parser.raw_message(), kFixedResponse);
 }
 
+// 测试：HEAD、1xx、204 和 304 响应必须判定为无正文，后续字节不能误算进当前响应。
 TEST(HttpResponseParserTest, RecognizesResponsesThatMustNotHaveBody)
 {
     ResponseParser head("HEAD");
@@ -110,6 +115,7 @@ TEST(HttpResponseParserTest, RecognizesResponsesThatMustNotHaveBody)
     }
 }
 
+// 测试：没有长度信息的关闭定界响应应持续等待，直到上游关闭连接后才判定完整。
 TEST(HttpResponseParserTest, UsesConnectionCloseAsMessageBoundary)
 {
     ResponseParser parser;
@@ -124,6 +130,7 @@ TEST(HttpResponseParserTest, UsesConnectionCloseAsMessageBoundary)
     EXPECT_EQ(parser.body(), "hello");
 }
 
+// 测试：Header 未完成或固定长度正文未收够时连接提前关闭，应报告 UnexpectedEof。
 TEST(HttpResponseParserTest, RejectsPrematureEof)
 {
     ResponseParser before_headers;
@@ -138,8 +145,10 @@ TEST(HttpResponseParserTest, RejectsPrematureEof)
     EXPECT_EQ(result.error, ResponseParseError::kUnexpectedEof);
 }
 
+// 测试：完整 chunked 响应应按各块长度拼接正文，并保留可转发的原始响应字节。
 TEST(HttpResponseParserTest, DecodesChunkedResponse)
-{
+{   //raw_message()用于返回原始chunked响应
+    //body()用于返回Wikipedia
     ResponseParser parser;
     const auto result = parser.consume(kChunkedResponse);
 
@@ -150,6 +159,7 @@ TEST(HttpResponseParserTest, DecodesChunkedResponse)
     EXPECT_EQ(parser.raw_message(), kChunkedResponse);
 }
 
+// 测试：chunked 响应每次只输入 1 字节时，最终仍应正确完成并还原正文。
 TEST(HttpResponseParserTest, DecodesChunkedResponseByteByByte)
 {
     ResponseParser parser;
@@ -168,6 +178,7 @@ TEST(HttpResponseParserTest, DecodesChunkedResponseByteByByte)
     EXPECT_EQ(parser.body(), "Wikipedia");
 }
 
+// 测试：把 chunked 响应随机切成许多小块并重复 100 次，解析结果都应保持一致。
 TEST(HttpResponseParserTest, HandlesDeterministicRandomChunkBoundaries)
 {
     std::mt19937 generator(20260813U);
@@ -194,6 +205,7 @@ TEST(HttpResponseParserTest, HandlesDeterministicRandomChunkBoundaries)
     }
 }
 
+// 测试：合法的 chunk 扩展和结尾 Trailer 应被接受，正文与 Trailer 字段应分别保存。
 TEST(HttpResponseParserTest, AcceptsChunkExtensionAndTrailer)
 {
     ResponseParser parser;
@@ -210,6 +222,7 @@ TEST(HttpResponseParserTest, AcceptsChunkExtensionAndTrailer)
     EXPECT_EQ(parser.trailers()[0].value, "abc123");
 }
 
+// 测试：非法块长度、错误块结尾和禁止出现在 Trailer 中的字段都应返回明确错误。
 TEST(HttpResponseParserTest, RejectsInvalidChunkSyntax)
 {
     ResponseParser bad_size;
@@ -231,6 +244,7 @@ TEST(HttpResponseParserTest, RejectsInvalidChunkSyntax)
     EXPECT_EQ(result.error, ResponseParseError::kInvalidTrailer);
 }
 
+// 测试：状态行中的版本、三位状态码、状态码范围和分隔格式不合法时应分别拒绝。
 TEST(HttpResponseParserTest, ValidatesStatusLine)
 {
     ResponseParser bad_version;
@@ -250,6 +264,7 @@ TEST(HttpResponseParserTest, ValidatesStatusLine)
     EXPECT_EQ(result.error, ResponseParseError::kInvalidStatusLine);
 }
 
+// 测试：非法 Header 及互相冲突或不支持的响应定界信息应被识别并拒绝。
 TEST(HttpResponseParserTest, ValidatesHeadersAndFraming)
 {
     ResponseParser no_colon;
@@ -287,6 +302,7 @@ TEST(HttpResponseParserTest, ValidatesHeadersAndFraming)
         ResponseParseError::kUnsupportedTransferEncoding);
 }
 
+// 测试：请求头、固定长度正文、chunked 正文和关闭定界正文都必须遵守各自容量上限。
 TEST(HttpResponseParserTest, EnforcesHeaderAndBodyLimits)
 {
     ResponseParser header_limited("GET", 16, 1024);
@@ -310,6 +326,7 @@ TEST(HttpResponseParserTest, EnforcesHeaderAndBodyLimits)
     EXPECT_EQ(result.error, ResponseParseError::kBodyTooLarge);
 }
 
+// 测试：单次输入超过 Header 与正文总上限时，应在扩充内部缓冲区前拒绝全部数据。
 TEST(HttpResponseParserTest, RejectsWireBytesBeforeGrowingPastAbsoluteLimit)
 {
     ResponseParser parser("GET", 32, 4);
@@ -320,6 +337,7 @@ TEST(HttpResponseParserTest, RejectsWireBytesBeforeGrowingPastAbsoluteLimit)
     EXPECT_EQ(parser.buffered_bytes(), 0U);
 }
 
+// 测试：响应已经完成后再次输入数据，应保持原完成结果并且不再扩大内部缓冲区。
 TEST(HttpResponseParserTest, KeepsTerminalResultStable)
 {
     ResponseParser parser;
