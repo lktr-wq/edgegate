@@ -62,6 +62,15 @@
 | `S7-RELIABILITY-CONFIG-*` / `S7-RELIABILITY-EXAMPLE-CONFIG` / `TESTS` | 7 | 配置模型、YAML、示例和测试 | 水位、六类超时、健康周期/阈值/路径及关系校验 | 配置字段是否进入不可变运行快照 | 配置全量回归通过 |
 | `S7-RELIABLE-PROXY-INTEGRATION-TESTS` / `S7-RELIABLE-PROXY-TEST-BUILD` | 7 | 新代理集成测试和 CMake | 4 MiB 下行背压、512 KiB 上传、重试、部分响应故障、chunked/关闭定界、504、健康恢复 | 指标是否证明机制真实发生 | 8 项专项集成测试通过 |
 | `S7-FORMAL-SERVICE-SWITCH` | 7 | `apps/edgegate_service_main.cpp` | 正式入口切换到阶段7服务器，保留旧阶段对照实现 | 配置快照如何进入运行时 | 三后端 a/b/c/a/b/c |
+| `S8-MANAGEMENT-AND-LOGGING-CONFIG-*` | 8 | 配置模型、YAML、示例和配置测试 | 管理 Socket、排空期限、日志目录/级别/轮转参数及完整校验 | 哪些字段可热更，哪些必须重启 | 三构建 117/117 |
+| `S8-MANAGEMENT-SERVER-API` / `IMPLEMENTATION` | 8 | `include/edgegate/runtime/management_server.h`、`src/runtime/management_server.cpp` | 非阻塞 Unix Listener、0600权限、一行JSON命令/响应、短读写和安全清理 | 管理fd与代理fd如何共享EventLoop | 集成与真实进程通过 |
+| `S8-EDGEGATECTL` / `S8-EDGEGATECTL-LINK` | 8 | `apps/edgegatectl_main.cpp`、`CMakeLists.txt` | 单次命令CLI、Unix连接、JSON协议、人类输出和0/1/2/3退出码 | 为什么不做常驻Shell | 真实七类命令通过 |
+| `S8-RUNTIME-CONTROL-*` / `S8-SESSION-DRAIN-API` | 8 | `src/proxy/reliable_proxy_server.cpp` | running/draining/drained/stopping状态、查询、排空期限、幂等stop与管理分派 | Listener停止与Session完成的区别 | drain/超时/stop通过 |
+| `S8-IN-FLIGHT-CONFIG-SNAPSHOT` / `S8-NEXT-REQUEST-TIMEOUT-SNAPSHOT` | 8 | `src/proxy/reliable_proxy_server.cpp` | reload时固定在途路由与超时，新请求读取新配置 | 原子切换不等于修改所有旧对象 | 合法/无效/不可变reload通过 |
+| `S8-SIGNAL-CONTROL-*` / `S8-SERVICE-SIGNAL-SETUP` | 8 | signal_control头源与正式入口 | 屏蔽SIGTERM/SIGINT，以signalfd接入epoll并复用平滑停止 | 为什么异步信号处理器不做复杂C++工作 | 真实SIGTERM退出0 |
+| `S8-RUNTIME-LOGGER-*` / `S8-ACCESS-LOG-*` | 8 | runtime_logger头源与可靠代理 | 8192条有界异步队列、三类轮转日志、访问/错误/管理记录和敏感字段边界 | 网络线程为何不等待磁盘 | 日志生成与轮转测试通过 |
+| `S8-RUNTIME-MANAGEMENT-INTEGRATION-TESTS` / `S8-RUNTIME-TEST-BUILD` / `S8-RUNTIME-BUILD` | 8 | `tests/runtime_management_integration_test.cpp`、`CMakeLists.txt` | 运行时源码接入，以及Socket权限、查询、reload原子性、排空超时和轮转日志测试 | 结果与内部状态证据是否同时存在 | 7项新增测试；全量117/117 |
+| `S8-CLI-PROCESS-ACCEPTANCE` | 8 | `tests/stage8_cli_acceptance.sh` | 三后端正式进程、CLI、curl、reload/drain/stop/SIGTERM可复现验收和清理 | 单元测试与真实进程验收的边界 | `STAGE8_CLI_ACCEPTANCE=PASS` |
 
 ## 贡献边界
 

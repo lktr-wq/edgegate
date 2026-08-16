@@ -9,11 +9,17 @@
 #include "edgegate/net/event_loop.h"
 #include "edgegate/net/unique_fd.h"
 #include "edgegate/routing/route_table.h"
+// AI-CODE-BEGIN: S8-RUNTIME-INTEGRATION-INCLUDES
+#include "edgegate/runtime/management_server.h"
+#include "edgegate/runtime/runtime_logger.h"
+#include "edgegate/runtime/signal_control.h"
+// AI-CODE-END: S8-RUNTIME-INTEGRATION-INCLUDES
 
 #include <algorithm>
 #include <array>
 #include <cerrno>
 #include <chrono>
+#include <csignal>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -27,6 +33,8 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+
+#include <nlohmann/json.hpp>
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -166,16 +174,30 @@ struct HealthProbe {
     Clock::time_point deadline{};
 };
 
+// AI-CODE-BEGIN: S8-SERVICE-STATE
+enum class ServiceMode { kRunning, kDraining, kDrained, kStopping };
+// AI-CODE-END: S8-SERVICE-STATE
+
 class ReliableRuntime final : public std::enable_shared_from_this<ReliableRuntime> {
 public:
     ReliableRuntime(
         edgegate::config::EdgeGateConfig config,
-        std::shared_ptr<ReliableProxyStats> stats)
+        std::shared_ptr<ReliableProxyStats> stats,
+        std::string config_path)
         : config_(std::move(config)),
           stats_(std::move(stats)),
-          routes_(std::make_shared<edgegate::routing::RouteTable>(config_.routes))
+          routes_(std::make_shared<edgegate::routing::RouteTable>(config_.routes)),
+          config_path_(std::move(config_path)),
+          logger_(std::make_shared<edgegate::runtime::RuntimeLogger>(config_.logging)),
+          started_at_(Clock::now())
     {
-        const auto now = Clock::now();
+        rebuild_health(Clock::now());
+    }
+
+    void rebuild_health(Clock::time_point now)
+    {
+        health_.clear();
+        probes_.clear();
         for (const auto& endpoint : routes_->unique_endpoints()) {
             const std::string key = endpoint_key(endpoint.address, endpoint.port);
             // 服务启动后先等待一个完整 interval，再做第一次探测；避免健康探测
@@ -201,12 +223,27 @@ public:
         return routes_;
     }
 
+    const std::shared_ptr<edgegate::runtime::RuntimeLogger>& logger() const noexcept
+    {
+        return logger_;
+    }
+
     void add_session(const std::shared_ptr<ReliableSession>& session)
     {
         sessions_.push_back(session);
     }
 
     void tick(edgegate::net::EventLoop& loop, Clock::time_point now) noexcept;
+
+    // AI-CODE-BEGIN: S8-RUNTIME-CONTROL-API
+    void set_listener_fd(int fd) noexcept { listener_fd_ = fd; }
+    nlohmann::json handle_management_command(
+        edgegate::net::EventLoop& loop,
+        const nlohmann::json& request) noexcept;
+    void request_stop(
+        edgegate::net::EventLoop& loop,
+        std::string_view source) noexcept;
+    // AI-CODE-END: S8-RUNTIME-CONTROL-API
 
     void record_upstream_result(
         const edgegate::routing::UpstreamEndpoint& endpoint,
@@ -225,12 +262,36 @@ private:
     void advance_probes(Clock::time_point now) noexcept;
     void record_result(const std::string& key, bool success) noexcept;
 
+    // AI-CODE-BEGIN: S8-RUNTIME-CONTROL-PRIVATE
+    void request_drain(
+        edgegate::net::EventLoop& loop,
+        bool stop_after_drain,
+        std::string_view source) noexcept;
+    nlohmann::json reload_configuration() noexcept;
+    [[nodiscard]] nlohmann::json status_json() const;
+    [[nodiscard]] nlohmann::json routes_json() const;
+    [[nodiscard]] nlohmann::json upstreams_json() const;
+    [[nodiscard]] nlohmann::json stats_json() const;
+    [[nodiscard]] const char* mode_name() const noexcept;
+    // AI-CODE-END: S8-RUNTIME-CONTROL-PRIVATE
+
     edgegate::config::EdgeGateConfig config_;
     std::shared_ptr<ReliableProxyStats> stats_;
     std::shared_ptr<edgegate::routing::RouteTable> routes_;
     std::vector<std::weak_ptr<ReliableSession>> sessions_;
     std::unordered_map<std::string, HealthState> health_;
     std::vector<HealthProbe> probes_;
+    // AI-CODE-BEGIN: S8-RUNTIME-CONTROL-FIELDS
+    std::string config_path_;
+    std::shared_ptr<edgegate::runtime::RuntimeLogger> logger_;
+    Clock::time_point started_at_{};
+    std::optional<int> listener_fd_;
+    ServiceMode mode_{ServiceMode::kRunning};
+    Clock::time_point drain_deadline_{};
+    Clock::time_point shutdown_not_before_{};
+    std::uint64_t config_generation_{1};
+    bool stop_after_drain_{false};
+    // AI-CODE-END: S8-RUNTIME-CONTROL-FIELDS
 };
 
 enum class StreamRole { kClient, kUpstream };
@@ -275,16 +336,17 @@ public:
           client_address_(std::move(client_address)),
           runtime_(std::move(runtime)),
           to_upstream_(runtime_->config().stream_buffer.capacity),
-          to_client_(runtime_->config().stream_buffer.capacity)
+          to_client_(runtime_->config().stream_buffer.capacity),
+          request_timeouts_(runtime_->config().timeouts)
     {
         ++runtime_->stats()->active_sessions;
         const auto now = Clock::now();
         request_started_ = now;
         last_io_ = now;
         phase_deadline_ = now + std::chrono::milliseconds(
-            runtime_->config().timeouts.client_header_ms);
+            request_timeouts_.client_header_ms);
         request_deadline_ = now + std::chrono::milliseconds(
-            runtime_->config().timeouts.request_total_ms);
+            request_timeouts_.request_total_ms);
     }
 
     ~ReliableSession()
@@ -297,6 +359,11 @@ public:
                   std::uint32_t events) noexcept;
     void check_timeout(edgegate::net::EventLoop& loop,
                        Clock::time_point now) noexcept;
+
+    // AI-CODE-BEGIN: S8-SESSION-DRAIN-API
+    void begin_drain(edgegate::net::EventLoop& loop) noexcept;
+    void force_close(edgegate::net::EventLoop& loop) noexcept;
+    // AI-CODE-END: S8-SESSION-DRAIN-API
 
 private:
     void read_client(edgegate::net::EventLoop& loop) noexcept;
@@ -329,6 +396,7 @@ private:
     void refresh_interests(edgegate::net::EventLoop& loop) noexcept;
     void update_request_backpressure() noexcept;
     void update_response_backpressure() noexcept;
+    void log_access_once() noexcept;
     void note_io() noexcept { last_io_ = Clock::now(); }
 
     int client_fd_;
@@ -361,11 +429,20 @@ private:
     std::size_t client_response_bytes_sent_{0};
     bool response_paused_{false};
     bool response_complete_{false};
+    // AI-CODE-BEGIN: S8-ACCESS-LOG-STATE
+    int response_status_code_{0};
+    bool access_logged_{false};
+    // AI-CODE-END: S8-ACCESS-LOG-STATE
 
     edgegate::net::ByteBuffer to_upstream_;
     edgegate::net::ByteBuffer to_client_;
     std::optional<edgegate::routing::UpstreamEndpoint> selected_upstream_;
+    // AI-CODE-BEGIN: S8-IN-FLIGHT-CONFIG-SNAPSHOT
+    // 当前请求固定使用开始解析时的路由表；reload 只影响下一条请求。
+    std::shared_ptr<edgegate::routing::RouteTable> request_routes_;
+    // AI-CODE-END: S8-IN-FLIGHT-CONFIG-SNAPSHOT
     std::vector<std::string> attempted_upstream_ids_;
+    edgegate::config::TimeoutConfig request_timeouts_;
 
     Clock::time_point request_started_{};
     Clock::time_point request_deadline_{};
@@ -537,6 +614,18 @@ bool ReliableSession::accept_request_bytes(
     std::string_view bytes) noexcept
 {
     if (state_ == StreamState::kReadingRequestHead) {
+        // AI-CODE-BEGIN: S8-NEXT-REQUEST-TIMEOUT-SNAPSHOT
+        if (request_head_bytes_.empty()) {
+            // Keep-Alive 空闲期间可能发生 reload；第一批新请求字节到达时，
+            // 固定这一轮的超时快照，之后 reload 不再改变在途期限。
+            request_timeouts_ = runtime_->config().timeouts;
+            request_started_ = Clock::now();
+            request_deadline_ = request_started_ + std::chrono::milliseconds(
+                request_timeouts_.request_total_ms);
+            phase_deadline_ = request_started_ + std::chrono::milliseconds(
+                request_timeouts_.client_header_ms);
+        }
+        // AI-CODE-END: S8-NEXT-REQUEST-TIMEOUT-SNAPSHOT
         request_head_bytes_.append(bytes.data(), bytes.size());
         const std::size_t end = request_head_bytes_.find("\r\n\r\n");
         if (end == std::string::npos) {
@@ -570,7 +659,7 @@ bool ReliableSession::accept_request_bytes(
     if (request_body_complete_ && to_upstream_.empty()) {
         state_ = StreamState::kReadingResponseHead;
         phase_deadline_ = Clock::now() + std::chrono::milliseconds(
-            runtime_->config().timeouts.upstream_header_ms);
+            request_timeouts_.upstream_header_ms);
     }
     return true;
 }
@@ -607,7 +696,10 @@ bool ReliableSession::finish_request_head(
     close_after_response_ = header_contains_token(
         request_parser_->header_value("Connection"), "close");
 
-    const auto route = runtime_->routes()->lookup(request_host_, request_target_);
+    // AI-CODE-BEGIN: S8-IN-FLIGHT-CONFIG-SNAPSHOT
+    request_routes_ = runtime_->routes();
+    const auto route = request_routes_->lookup(request_host_, request_target_);
+    // AI-CODE-END: S8-IN-FLIGHT-CONFIG-SNAPSHOT
     if (route.status == edgegate::routing::RouteLookupStatus::kNoRoute) {
         queue_error(loop, 404, "Not Found");
         return false;
@@ -674,7 +766,7 @@ void ReliableSession::connect_upstream(edgegate::net::EventLoop& loop) noexcept
         return;
     }
     phase_deadline_ = Clock::now() + std::chrono::milliseconds(
-        runtime_->config().timeouts.upstream_connect_ms);
+        request_timeouts_.upstream_connect_ms);
     if (state_ == StreamState::kSendingRequest) {
         write_upstream(loop);
     }
@@ -727,7 +819,7 @@ void ReliableSession::write_upstream(edgegate::net::EventLoop& loop) noexcept
     if (request_body_complete_) {
         state_ = StreamState::kReadingResponseHead;
         phase_deadline_ = Clock::now() + std::chrono::milliseconds(
-            runtime_->config().timeouts.upstream_header_ms);
+            request_timeouts_.upstream_header_ms);
     }
 }
 
@@ -830,6 +922,9 @@ bool ReliableSession::finish_response_head(
         return false;
     }
     response_mode_ = response_parser_->body_mode();
+    // AI-CODE-BEGIN: S8-CAPTURE-RESPONSE-STATUS
+    response_status_code_ = response_parser_->status_code();
+    // AI-CODE-END: S8-CAPTURE-RESPONSE-STATUS
     response_body_expected_ = response_mode_ ==
         edgegate::http::ResponseBodyMode::kContentLength
         ? response_parser_->content_length() : 0;
@@ -934,6 +1029,10 @@ void ReliableSession::write_client(edgegate::net::EventLoop& loop) noexcept
         return;
     }
     if (state_ == StreamState::kDrainingResponse) {
+        // AI-CODE-BEGIN: S8-WRITE-ACCESS-LOG
+        // 只有输出缓冲区真正发空后才记录，日志中的字节数代表已经交给内核的字节。
+        log_access_once();
+        // AI-CODE-END: S8-WRITE-ACCESS-LOG
         if (close_after_response_ || client_read_closed_) {
             close_session(loop);
         } else {
@@ -980,15 +1079,19 @@ void ReliableSession::reset_for_keep_alive() noexcept
     client_response_bytes_sent_ = 0;
     response_paused_ = false;
     response_complete_ = false;
+    response_status_code_ = 0;
+    access_logged_ = false;
     selected_upstream_.reset();
+    request_routes_.reset();
     attempted_upstream_ids_.clear();
     to_upstream_.clear();
     const auto now = Clock::now();
+    request_timeouts_ = runtime_->config().timeouts;
     request_started_ = now;
     request_deadline_ = now + std::chrono::milliseconds(
-        runtime_->config().timeouts.request_total_ms);
+        request_timeouts_.request_total_ms);
     phase_deadline_ = now + std::chrono::milliseconds(
-        runtime_->config().timeouts.keep_alive_idle_ms);
+        request_timeouts_.keep_alive_idle_ms);
     last_io_ = now;
 }
 
@@ -998,6 +1101,15 @@ void ReliableSession::upstream_failure(
     const char* reason,
     bool timeout) noexcept
 {
+    // AI-CODE-BEGIN: S8-UPSTREAM-ERROR-LOG
+    std::string detail = "status=" + std::to_string(final_status) +
+        " reason=" + reason + " timeout=" + (timeout ? "true" : "false");
+    if (selected_upstream_.has_value()) {
+        detail += " upstream=" + selected_upstream_->address + ":" +
+                  std::to_string(selected_upstream_->port);
+    }
+    runtime_->logger()->error("upstream_failure", detail);
+    // AI-CODE-END: S8-UPSTREAM-ERROR-LOG
     ++runtime_->stats()->upstream_errors;
     if (timeout) {
         ++runtime_->stats()->upstream_timeouts;
@@ -1023,7 +1135,10 @@ bool ReliableSession::retry_upstream(edgegate::net::EventLoop& loop) noexcept
         attempted_upstream_ids_.size() >= 2) {
         return false;
     }
-    const auto route = runtime_->routes()->lookup(
+    if (!request_routes_) {
+        return false;
+    }
+    const auto route = request_routes_->lookup(
         request_host_, request_target_, attempted_upstream_ids_);
     if (route.status != edgegate::routing::RouteLookupStatus::kMatched) {
         return false;
@@ -1052,6 +1167,10 @@ void ReliableSession::queue_error(
     int status,
     const char* reason) noexcept
 {
+    // AI-CODE-BEGIN: S8-ERROR-RESPONSE-LOG-STATE
+    response_status_code_ = status;
+    runtime_->logger()->error("proxy_response", std::to_string(status) + " " + reason);
+    // AI-CODE-END: S8-ERROR-RESPONSE-LOG-STATE
     close_upstream(loop);
     to_upstream_.clear();
     to_client_.clear();
@@ -1130,6 +1249,60 @@ void ReliableSession::update_response_backpressure() noexcept
     }
 }
 
+// AI-CODE-BEGIN: S8-ACCESS-LOG-IMPLEMENTATION
+void ReliableSession::log_access_once() noexcept
+{
+    if (access_logged_) {
+        return;
+    }
+    access_logged_ = true;
+
+    std::string_view safe_target(request_target_);
+    const std::size_t query = safe_target.find('?');
+    if (query != std::string_view::npos) {
+        // 查询参数可能包含令牌或密码；访问日志只保留路径。
+        safe_target = safe_target.substr(0, query);
+    }
+
+    std::string upstream = "none";
+    if (selected_upstream_.has_value()) {
+        upstream = selected_upstream_->address + ":" +
+                   std::to_string(selected_upstream_->port);
+    }
+    const auto latency = std::chrono::duration_cast<std::chrono::milliseconds>(
+        Clock::now() - request_started_).count();
+    runtime_->logger()->access(
+        request_method_.empty() ? "unknown" : request_method_,
+        request_host_.empty() ? "unknown" : request_host_,
+        safe_target.empty() ? "/" : safe_target,
+        response_status_code_,
+        client_response_bytes_sent_,
+        latency,
+        upstream);
+}
+
+void ReliableSession::begin_drain(edgegate::net::EventLoop& loop) noexcept
+{
+    if (state_ == StreamState::kClosed) {
+        return;
+    }
+    close_after_response_ = true;
+
+    // Keep-Alive 连接若正在等待“下一条”请求，并没有在途工作，可立即回收。
+    if (state_ == StreamState::kReadingRequestHead &&
+        request_head_bytes_.empty()) {
+        close_session(loop);
+        return;
+    }
+    refresh_interests(loop);
+}
+
+void ReliableSession::force_close(edgegate::net::EventLoop& loop) noexcept
+{
+    close_session(loop);
+}
+// AI-CODE-END: S8-ACCESS-LOG-IMPLEMENTATION
+
 void ReliableSession::check_timeout(
     edgegate::net::EventLoop& loop,
     Clock::time_point now) noexcept
@@ -1159,7 +1332,7 @@ void ReliableSession::check_timeout(
          state_ == StreamState::kStreamingResponse ||
          state_ == StreamState::kDrainingResponse) &&
         now - last_io_ >= std::chrono::milliseconds(
-            runtime_->config().timeouts.io_idle_ms)) {
+            request_timeouts_.io_idle_ms)) {
         if (state_ == StreamState::kSendingRequest && !request_body_complete_) {
             ++runtime_->stats()->client_errors;
             close_session(loop);
@@ -1171,6 +1344,248 @@ void ReliableSession::check_timeout(
     }
 }
 
+// AI-CODE-BEGIN: S8-RUNTIME-CONTROL-IMPLEMENTATION
+const char* ReliableRuntime::mode_name() const noexcept
+{
+    switch (mode_) {
+    case ServiceMode::kRunning: return "running";
+    case ServiceMode::kDraining: return "draining";
+    case ServiceMode::kDrained: return "drained";
+    case ServiceMode::kStopping: return "stopping";
+    }
+    return "unknown";
+}
+
+nlohmann::json ReliableRuntime::status_json() const
+{
+    const auto uptime = std::chrono::duration_cast<std::chrono::milliseconds>(
+        Clock::now() - started_at_).count();
+    return {
+        {"state", mode_name()},
+        {"listen", config_.listen_address + ":" +
+                       std::to_string(config_.listen_port)},
+        {"uptime_ms", uptime},
+        {"config_generation", config_generation_},
+        {"active_sessions", stats_->active_sessions.load()},
+        {"completed_requests", stats_->completed_requests.load()}};
+}
+
+nlohmann::json ReliableRuntime::routes_json() const
+{
+    nlohmann::json result = nlohmann::json::array();
+    for (const auto& route : routes_->routes()) {
+        result.push_back({
+            {"id", route.id},
+            {"host", route.host_pattern},
+            {"path_prefix", route.path_prefix},
+            {"upstream_count", route.upstreams.size()}});
+    }
+    return result;
+}
+
+nlohmann::json ReliableRuntime::upstreams_json() const
+{
+    std::vector<const HealthState*> ordered;
+    ordered.reserve(health_.size());
+    for (const auto& [key, state] : health_) {
+        static_cast<void>(key);
+        ordered.push_back(&state);
+    }
+    std::sort(ordered.begin(), ordered.end(),
+        [](const HealthState* left, const HealthState* right) {
+            if (left->endpoint.id != right->endpoint.id) {
+                return left->endpoint.id < right->endpoint.id;
+            }
+            if (left->endpoint.address != right->endpoint.address) {
+                return left->endpoint.address < right->endpoint.address;
+            }
+            return left->endpoint.port < right->endpoint.port;
+        });
+
+    nlohmann::json result = nlohmann::json::array();
+    for (const HealthState* state : ordered) {
+        result.push_back({
+            {"id", state->endpoint.id},
+            {"address", state->endpoint.address},
+            {"port", state->endpoint.port},
+            {"healthy", state->endpoint.healthy},
+            {"consecutive_failures", state->consecutive_failures},
+            {"consecutive_successes", state->consecutive_successes}});
+    }
+    return result;
+}
+
+nlohmann::json ReliableRuntime::stats_json() const
+{
+    return {
+        {"accepted", stats_->accepted.load()},
+        {"active_sessions", stats_->active_sessions.load()},
+        {"backpressure_pauses", stats_->backpressure_pauses.load()},
+        {"backpressure_resumes", stats_->backpressure_resumes.load()},
+        {"client_errors", stats_->client_errors.load()},
+        {"completed_requests", stats_->completed_requests.load()},
+        {"health_failures", stats_->health_failures.load()},
+        {"health_transitions", stats_->health_transitions.load()},
+        {"retries", stats_->retries.load()},
+        {"upstream_errors", stats_->upstream_errors.load()},
+        {"upstream_timeouts", stats_->upstream_timeouts.load()}};
+}
+
+void ReliableRuntime::request_drain(
+    edgegate::net::EventLoop& loop,
+    bool stop_after_drain,
+    std::string_view source) noexcept
+{
+    const auto now = Clock::now();
+    if (stop_after_drain && !stop_after_drain_) {
+        stop_after_drain_ = true;
+        shutdown_not_before_ = now + std::chrono::milliseconds(250);
+    }
+
+    if (mode_ == ServiceMode::kRunning) {
+        if (listener_fd_.has_value()) {
+            static_cast<void>(loop.remove(*listener_fd_));
+            listener_fd_.reset();
+        }
+        drain_deadline_ = now + std::chrono::milliseconds(
+            config_.management.drain_timeout_ms);
+    }
+
+    if (stop_after_drain_) {
+        mode_ = ServiceMode::kStopping;
+    } else if (mode_ == ServiceMode::kRunning) {
+        mode_ = ServiceMode::kDraining;
+    }
+
+    for (auto& weak_session : sessions_) {
+        if (auto session = weak_session.lock()) {
+            session->begin_drain(loop);
+        }
+    }
+    logger_->management(
+        stop_after_drain ? "stop" : "drain",
+        std::string("source=") + std::string(source) +
+            " state=" + mode_name());
+}
+
+void ReliableRuntime::request_stop(
+    edgegate::net::EventLoop& loop,
+    std::string_view source) noexcept
+{
+    request_drain(loop, true, source);
+}
+
+nlohmann::json ReliableRuntime::reload_configuration() noexcept
+{
+    if (config_path_.empty()) {
+        logger_->error("reload", "startup YAML path is unavailable");
+        return {{"ok", false}, {"error", "reload requires a startup YAML path"}};
+    }
+
+    try {
+        auto replacement = edgegate::config::load_edgegate_config(config_path_);
+
+        const bool immutable_changed =
+            replacement.listen_address != config_.listen_address ||
+            replacement.listen_port != config_.listen_port ||
+            replacement.max_header_size != config_.max_header_size ||
+            replacement.max_request_body_size != config_.max_request_body_size ||
+            replacement.max_response_body_size != config_.max_response_body_size ||
+            replacement.stream_buffer.capacity != config_.stream_buffer.capacity ||
+            replacement.stream_buffer.high_watermark !=
+                config_.stream_buffer.high_watermark ||
+            replacement.stream_buffer.low_watermark !=
+                config_.stream_buffer.low_watermark ||
+            replacement.management.enabled != config_.management.enabled ||
+            replacement.management.socket_path !=
+                config_.management.socket_path;
+        if (immutable_changed) {
+            logger_->error("reload", "immutable setting changed");
+            return {
+                {"ok", false},
+                {"error", "reload rejected: listen, management socket, limits "
+                          "and stream buffer changes require restart"}};
+        }
+
+        // 所有可能抛异常的对象先在局部变量中完整构造；任何一步失败，
+        // config_、routes_ 和 logger_ 都仍然指向旧快照。
+        auto replacement_routes =
+            std::make_shared<edgegate::routing::RouteTable>(replacement.routes);
+        auto replacement_logger =
+            std::make_shared<edgegate::runtime::RuntimeLogger>(replacement.logging);
+
+        config_ = std::move(replacement);
+        routes_ = std::move(replacement_routes);
+        logger_ = std::move(replacement_logger);
+        rebuild_health(Clock::now());
+        ++config_generation_;
+        return {
+            {"ok", true},
+            {"data", {
+                {"message", "configuration reloaded"},
+                {"config_generation", config_generation_}}}};
+    } catch (const std::exception& error) {
+        logger_->error("reload", error.what());
+        return {
+            {"ok", false},
+            {"error", std::string("reload failed; old configuration kept: ") +
+                          error.what()}};
+    } catch (...) {
+        logger_->error("reload", "unknown exception");
+        return {
+            {"ok", false},
+            {"error", "reload failed; old configuration kept"}};
+    }
+}
+
+nlohmann::json ReliableRuntime::handle_management_command(
+    edgegate::net::EventLoop& loop,
+    const nlohmann::json& request) noexcept
+{
+    try {
+        const auto command = request.find("command");
+        if (command == request.end() || !command->is_string()) {
+            return {{"ok", false}, {"error", "command must be a string"}};
+        }
+        const std::string name = command->get<std::string>();
+        nlohmann::json response;
+        if (name == "status") {
+            response = {{"ok", true}, {"data", status_json()}};
+        } else if (name == "routes") {
+            response = {{"ok", true}, {"data", routes_json()}};
+        } else if (name == "upstreams") {
+            response = {{"ok", true}, {"data", upstreams_json()}};
+        } else if (name == "stats") {
+            response = {{"ok", true}, {"data", stats_json()}};
+        } else if (name == "reload") {
+            response = reload_configuration();
+        } else if (name == "drain") {
+            request_drain(loop, false, "edgegatectl");
+            response = {{"ok", true}, {"data", {
+                {"message", std::string("drain state: ") + mode_name()}}}};
+        } else if (name == "stop") {
+            request_stop(loop, "edgegatectl");
+            response = {{"ok", true}, {"data", {
+                {"message", "graceful stop requested"}}}};
+        } else {
+            response = {{"ok", false}, {"error", "unknown command: " + name}};
+        }
+
+        logger_->management(
+            "command",
+            "name=" + name + " ok=" +
+                (response.value("ok", false) ? "true" : "false"));
+        return response;
+    } catch (const std::exception& error) {
+        logger_->error("management_command", error.what());
+        return {{"ok", false}, {"error", error.what()}};
+    } catch (...) {
+        logger_->error("management_command", "unknown exception");
+        return {{"ok", false}, {"error", "internal management error"}};
+    }
+}
+// AI-CODE-END: S8-RUNTIME-CONTROL-IMPLEMENTATION
+
 void ReliableRuntime::tick(
     edgegate::net::EventLoop& loop,
     Clock::time_point now) noexcept
@@ -1178,11 +1593,38 @@ void ReliableRuntime::tick(
     auto output = sessions_.begin();
     for (auto input = sessions_.begin(); input != sessions_.end(); ++input) {
         if (auto session = input->lock()) {
+            // AI-CODE-BEGIN: S8-TICK-DRAIN-SESSIONS
+            if (mode_ != ServiceMode::kRunning) {
+                if (now >= drain_deadline_) {
+                    session->force_close(loop);
+                } else {
+                    session->begin_drain(loop);
+                }
+            }
+            // AI-CODE-END: S8-TICK-DRAIN-SESSIONS
             session->check_timeout(loop, now);
             *output++ = *input;
         }
     }
     sessions_.erase(output, sessions_.end());
+
+    // AI-CODE-BEGIN: S8-TICK-SERVICE-STATE
+    if (mode_ != ServiceMode::kRunning &&
+        stats_->active_sessions.load() == 0) {
+        if (stop_after_drain_ && now >= shutdown_not_before_) {
+            logger_->management("shutdown", "all sessions closed");
+            logger_->flush();
+            loop.stop();
+            return;
+        }
+        if (!stop_after_drain_) {
+            mode_ = ServiceMode::kDrained;
+        }
+    }
+    if (mode_ != ServiceMode::kRunning) {
+        return;
+    }
+    // AI-CODE-END: S8-TICK-SERVICE-STATE
 
     advance_probes(now);
     for (auto& [key, state] : health_) {
@@ -1457,16 +1899,45 @@ edgegate::net::UniqueFd make_runtime_timer()
 
 class ReliableProxyServer::Implementation {
 public:
-    explicit Implementation(edgegate::config::EdgeGateConfig config)
+    explicit Implementation(
+        edgegate::config::EdgeGateConfig config,
+        std::string config_path)
         : stats_(std::make_shared<ReliableProxyStats>()),
-          runtime_(std::make_shared<ReliableRuntime>(config, stats_))
+          runtime_(std::make_shared<ReliableRuntime>(
+              config, stats_, config_path))
     {
         edgegate::net::UniqueFd listener = make_listener(
             config.listen_address, config.listen_port, port_);
+        // AI-CODE-BEGIN: S8-REGISTER-RUNTIME-HANDLERS
+        runtime_->set_listener_fd(listener.get());
+        // AI-CODE-END: S8-REGISTER-RUNTIME-HANDLERS
         loop_.add(std::make_unique<ReliableListener>(
             std::move(listener), runtime_));
         loop_.add(std::make_unique<RuntimeTimer>(
             make_runtime_timer(), runtime_));
+
+        // AI-CODE-BEGIN: S8-REGISTER-RUNTIME-HANDLERS
+        if (config.management.enabled) {
+            loop_.add(edgegate::runtime::make_management_listener(
+                config.management.socket_path,
+                [runtime = runtime_](
+                    edgegate::net::EventLoop& loop,
+                    const nlohmann::json& request) {
+                    return runtime->handle_management_command(loop, request);
+                }));
+        }
+        // 只有正式服务传入启动配置路径；单元测试中的内存服务器不接管
+        // 进程级 SIGTERM/SIGINT，避免改变已有测试进程的信号语义。
+        if (!config_path.empty()) {
+            loop_.add(edgegate::runtime::make_termination_signal_handler(
+                [runtime = runtime_](
+                    edgegate::net::EventLoop& loop,
+                    int signal_number) {
+                    runtime->request_stop(
+                        loop, signal_number == SIGTERM ? "SIGTERM" : "SIGINT");
+                }));
+        }
+        // AI-CODE-END: S8-REGISTER-RUNTIME-HANDLERS
     }
 
     edgegate::net::EventLoop loop_;
@@ -1475,8 +1946,11 @@ public:
     std::uint16_t port_{0};
 };
 
-ReliableProxyServer::ReliableProxyServer(edgegate::config::EdgeGateConfig config)
-    : implementation_(std::make_unique<Implementation>(std::move(config)))
+ReliableProxyServer::ReliableProxyServer(
+    edgegate::config::EdgeGateConfig config,
+    std::string config_path)
+    : implementation_(std::make_unique<Implementation>(
+          std::move(config), std::move(config_path)))
 {
 }
 

@@ -29,12 +29,18 @@ struct ReliableProxyStats {
 };
 
 /*
- * 正式阶段7服务。构造时接收一份完整、已校验的配置快照；运行期间不再
- * 读取 YAML，避免半更新配置污染正在处理的连接。
+ * 正式阶段7/8服务。构造时接收一份完整、已校验的配置快照；阶段8只有
+ * reload 命令会重新读取 YAML，并且完整校验成功后才原子切换。
  */
 class ReliableProxyServer {
 public:
-    explicit ReliableProxyServer(edgegate::config::EdgeGateConfig config);
+    // AI-CODE-BEGIN: S8-RELOAD-CONFIG-PATH
+    // config_path 仅由正式服务传入，reload 才知道应重新读取哪个 YAML；
+    // 阶段 7 测试仍可只传内存配置，因此保留空路径默认值。
+    explicit ReliableProxyServer(
+        edgegate::config::EdgeGateConfig config,
+        std::string config_path = {});
+    // AI-CODE-END: S8-RELOAD-CONFIG-PATH
     ~ReliableProxyServer();
 
     ReliableProxyServer(const ReliableProxyServer&) = delete;

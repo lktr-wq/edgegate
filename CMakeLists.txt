@@ -13,6 +13,11 @@ project(
 # AI-CODE-BEGIN: S6-YAML-DEPENDENCY
 # yaml-cpp 只负责 YAML 语法树；字段、范围和引用关系仍由 EdgeGate 校验。
 find_package(yaml-cpp REQUIRED)
+# AI-CODE-BEGIN: S8-RUNTIME-DEPENDENCIES
+# JSON 用于本机管理协议，spdlog 用于有界异步轮转日志。
+find_package(nlohmann_json REQUIRED)
+find_package(spdlog REQUIRED)
+# AI-CODE-END: S8-RUNTIME-DEPENDENCIES
 # AI-CODE-END: S6-YAML-DEPENDENCY
 
 #使用 C++17。
@@ -80,6 +85,11 @@ target_sources(
     src/config/edgegate_config.cpp
     src/http/message_rewriter.cpp
     src/routing/route_table.cpp
+    # AI-CODE-BEGIN: S8-RUNTIME-BUILD
+    src/runtime/runtime_logger.cpp
+    src/runtime/management_server.cpp
+    src/runtime/signal_control.cpp
+    # AI-CODE-END: S8-RUNTIME-BUILD
 )
 # AI-CODE-END: S6-ROUTE-TABLE-BUILD
 
@@ -95,6 +105,8 @@ target_link_libraries(
     edgegate_core
     PUBLIC
     yaml-cpp
+    nlohmann_json::nlohmann_json
+    spdlog::spdlog
 )
 
 # 正式 edgegate 已在阶段6切换为读取 YAML 的非阻塞代理入口。
@@ -115,6 +127,10 @@ add_executable(
     edgegatectl
     apps/edgegatectl_main.cpp
 )
+
+# AI-CODE-BEGIN: S8-EDGEGATECTL-LINK
+target_link_libraries(edgegatectl PRIVATE nlohmann_json::nlohmann_json)
+# AI-CODE-END: S8-EDGEGATECTL-LINK
 
 # AI-CODE-BEGIN: S4-REACTOR-DEMO-BUILD
 # 独立演示程序不替换阶段2代理，避免学习基线和Reactor验收相互混淆。
@@ -241,6 +257,9 @@ gtest_discover_tests(
 add_executable(
     edgegate_reliable_proxy_tests
     tests/reliable_proxy_integration_test.cpp
+    # AI-CODE-BEGIN: S8-RUNTIME-TEST-BUILD
+    tests/runtime_management_integration_test.cpp
+    # AI-CODE-END: S8-RUNTIME-TEST-BUILD
 )
 target_link_libraries(
     edgegate_reliable_proxy_tests

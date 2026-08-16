@@ -33,6 +33,23 @@ struct HealthCheckConfig {
     std::uint32_t success_threshold{2};
     std::string path{"/health"};
 };
+
+// AI-CODE-BEGIN: S8-MANAGEMENT-AND-LOGGING-CONFIG-API
+struct ManagementConfig {
+    // 直接构造测试配置时默认关闭；正式示例 YAML 会明确启用。
+    bool enabled{false};
+    std::string socket_path{"/tmp/edgegate.sock"};
+    std::uint32_t drain_timeout_ms{30000};
+};
+
+struct LoggingConfig {
+    bool enabled{false};
+    std::string directory{"/tmp/edgegate-logs"};
+    std::string level{"info"};
+    std::size_t max_file_size{10 * 1024 * 1024};
+    std::size_t max_files{5};
+};
+// AI-CODE-END: S8-MANAGEMENT-AND-LOGGING-CONFIG-API
 // AI-CODE-END: S7-RELIABILITY-CONFIG-API
 
 /*
@@ -51,6 +68,10 @@ struct EdgeGateConfig {
     HealthCheckConfig health_check;
     // AI-CODE-END: S7-RELIABILITY-CONFIG-FIELDS
     std::vector<edgegate::routing::RouteDefinition> routes;
+    // AI-CODE-BEGIN: S8-MANAGEMENT-AND-LOGGING-CONFIG-FIELDS
+    ManagementConfig management;
+    LoggingConfig logging;
+    // AI-CODE-END: S8-MANAGEMENT-AND-LOGGING-CONFIG-FIELDS
 };
 
 /*

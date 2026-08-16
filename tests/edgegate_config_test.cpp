@@ -180,5 +180,66 @@ stream_buffer:
 }
 // AI-CODE-END: S7-RELIABILITY-CONFIG-TESTS
 
+// AI-CODE-BEGIN: S8-MANAGEMENT-LOGGING-CONFIG-TESTS
+// 测试：阶段8的本机管理通道、排空期限和日志轮转参数应进入完整配置快照。
+TEST(EdgeGateConfigTest, LoadsManagementAndLoggingSettings)
+{
+    std::string yaml_text(kValidYaml);
+    yaml_text.insert(yaml_text.find("upstream_pools:"), R"yaml(
+management:
+  enabled: true
+  socket_path: /tmp/edgegate-test.sock
+  drain_timeout_ms: 4321
+logging:
+  enabled: true
+  directory: /tmp/edgegate-test-logs
+  level: warn
+  max_file_size: 65536
+  max_files: 3
+)yaml");
+    TemporaryYaml yaml(yaml_text);
+    const auto config = edgegate::config::load_edgegate_config(yaml.path());
+    EXPECT_TRUE(config.management.enabled);
+    EXPECT_EQ(config.management.socket_path, "/tmp/edgegate-test.sock");
+    EXPECT_EQ(config.management.drain_timeout_ms, 4321U);
+    EXPECT_TRUE(config.logging.enabled);
+    EXPECT_EQ(config.logging.directory, "/tmp/edgegate-test-logs");
+    EXPECT_EQ(config.logging.level, "warn");
+    EXPECT_EQ(config.logging.max_file_size, 65536U);
+    EXPECT_EQ(config.logging.max_files, 3U);
+}
+
+// 测试：Unix Socket 使用相对路径会让启动目录影响控制程序连接位置，必须拒绝。
+TEST(EdgeGateConfigTest, RejectsRelativeManagementSocketPath)
+{
+    std::string yaml_text(kValidYaml);
+    yaml_text.insert(yaml_text.find("upstream_pools:"), R"yaml(
+management:
+  enabled: true
+  socket_path: relative/edgegate.sock
+)yaml");
+    TemporaryYaml yaml(yaml_text);
+    EXPECT_THROW(
+        static_cast<void>(edgegate::config::load_edgegate_config(yaml.path())),
+        std::runtime_error);
+}
+
+// 测试：日志级别拼写错误时应在 reload/启动前失败，而不是默默退回 info。
+TEST(EdgeGateConfigTest, RejectsUnknownLoggingLevel)
+{
+    std::string yaml_text(kValidYaml);
+    yaml_text.insert(yaml_text.find("upstream_pools:"), R"yaml(
+logging:
+  enabled: true
+  directory: /tmp/edgegate-test-logs
+  level: verbose
+)yaml");
+    TemporaryYaml yaml(yaml_text);
+    EXPECT_THROW(
+        static_cast<void>(edgegate::config::load_edgegate_config(yaml.path())),
+        std::runtime_error);
+}
+// AI-CODE-END: S8-MANAGEMENT-LOGGING-CONFIG-TESTS
+
 } // namespace
 // AI-CODE-END: S6-YAML-CONFIG-TESTS

@@ -33,7 +33,23 @@ health_check:
   path: /health
 # AI-CODE-END: S7-RELIABILITY-EXAMPLE-CONFIG
 
-# 同一上游池中的健康节点按顺序轮询。主动健康检查将在阶段 7 加入。
+# AI-CODE-BEGIN: S8-MANAGEMENT-AND-LOGGING-EXAMPLE-CONFIG
+# edgegatectl 只通过这个本机 Unix Socket 管理服务；文件权限会设为 0600。
+management:
+  enabled: true
+  socket_path: /tmp/edgegate.sock
+  drain_timeout_ms: 30000
+
+# 开发阶段写入 /tmp；阶段10安装为 systemd 服务时迁移到正式运行目录。
+logging:
+  enabled: true
+  directory: /tmp/edgegate-logs
+  level: info
+  max_file_size: 10485760
+  max_files: 5
+# AI-CODE-END: S8-MANAGEMENT-AND-LOGGING-EXAMPLE-CONFIG
+
+# 同一上游池中的健康节点按顺序轮询；阶段7主动健康检查会动态更新状态。
 upstream_pools:
   - id: api_pool
     endpoints:

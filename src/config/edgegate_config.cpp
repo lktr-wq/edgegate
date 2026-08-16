@@ -122,6 +122,48 @@ std::uint32_t positive_u32(
     }
     return static_cast<std::uint32_t>(value);
 }
+
+// AI-CODE-BEGIN: S8-MANAGEMENT-AND-LOGGING-CONFIG-PARSING
+bool optional_bool(
+    const std::string& path,
+    const YAML::Node& parent,
+    const char* key,
+    bool default_value)
+{
+    const YAML::Node node = parent[key];
+    if (!node) {
+        return default_value;
+    }
+    if (!node.IsScalar()) {
+        fail(path, node, std::string("'") + key + "' must be true or false");
+    }
+    try {
+        return node.as<bool>();
+    } catch (const YAML::Exception&) {
+        fail(path, node, std::string("'") + key + "' must be true or false");
+    }
+}
+
+std::string optional_string(
+    const std::string& path,
+    const YAML::Node& parent,
+    const char* key,
+    std::string default_value)
+{
+    const YAML::Node node = parent[key];
+    if (!node) {
+        return default_value;
+    }
+    if (!node.IsScalar()) {
+        fail(path, node, std::string("'") + key + "' must be text");
+    }
+    try {
+        return node.as<std::string>();
+    } catch (const YAML::Exception&) {
+        fail(path, node, std::string("'") + key + "' must be text");
+    }
+}
+// AI-CODE-END: S8-MANAGEMENT-AND-LOGGING-CONFIG-PARSING
 // AI-CODE-END: S7-RELIABILITY-CONFIG-PARSING
 
 std::uint16_t port_value(
@@ -170,7 +212,7 @@ EdgeGateConfig load_edgegate_config(const std::string& path)
     require_map(path, root, "configuration root");
     reject_unknown_keys(path, root, {
         "listen", "limits", "stream_buffer", "timeouts", "health_check",
-        "upstream_pools", "routes"});
+        "management", "logging", "upstream_pools", "routes"});
 
     EdgeGateConfig config;
 
@@ -279,6 +321,62 @@ EdgeGateConfig load_edgegate_config(const std::string& path)
         }
     }
     // AI-CODE-END: S7-RELIABILITY-CONFIG-PARSING
+
+    // AI-CODE-BEGIN: S8-MANAGEMENT-AND-LOGGING-CONFIG-PARSING
+    const YAML::Node management = root["management"];
+    if (management) {
+        require_map(path, management, "management");
+        reject_unknown_keys(path, management, {
+            "enabled", "socket_path", "drain_timeout_ms"});
+        config.management.enabled = optional_bool(
+            path, management, "enabled", config.management.enabled);
+        config.management.socket_path = optional_string(
+            path, management, "socket_path", config.management.socket_path);
+        config.management.drain_timeout_ms = positive_u32(
+            path, management, "drain_timeout_ms",
+            config.management.drain_timeout_ms);
+        if (config.management.socket_path.empty() ||
+            config.management.socket_path.front() != '/' ||
+            config.management.socket_path.size() >= 100 ||
+            config.management.socket_path.find_first_of("\r\n") !=
+                std::string::npos) {
+            fail(path, management["socket_path"],
+                "management.socket_path must be an absolute Unix path "
+                "shorter than 100 bytes");
+        }
+    }
+
+    const YAML::Node logging = root["logging"];
+    if (logging) {
+        require_map(path, logging, "logging");
+        reject_unknown_keys(path, logging, {
+            "enabled", "directory", "level", "max_file_size", "max_files"});
+        config.logging.enabled = optional_bool(
+            path, logging, "enabled", config.logging.enabled);
+        config.logging.directory = optional_string(
+            path, logging, "directory", config.logging.directory);
+        config.logging.level = optional_string(
+            path, logging, "level", config.logging.level);
+        config.logging.max_file_size = positive_size(
+            path, logging, "max_file_size", config.logging.max_file_size);
+        config.logging.max_files = positive_size(
+            path, logging, "max_files", config.logging.max_files);
+        const std::unordered_set<std::string> valid_levels{
+            "trace", "debug", "info", "warn", "error", "critical", "off"};
+        if (config.logging.directory.empty() ||
+            config.logging.directory.front() != '/') {
+            fail(path, logging["directory"],
+                "logging.directory must be an absolute path");
+        }
+        if (valid_levels.count(config.logging.level) == 0U) {
+            fail(path, logging["level"],
+                "logging.level must be trace/debug/info/warn/error/critical/off");
+        }
+        if (config.logging.max_files > 100) {
+            fail(path, logging["max_files"], "logging.max_files must be <= 100");
+        }
+    }
+    // AI-CODE-END: S8-MANAGEMENT-AND-LOGGING-CONFIG-PARSING
 
     const YAML::Node pools = root["upstream_pools"];
     require_sequence(path, pools, "upstream_pools");
