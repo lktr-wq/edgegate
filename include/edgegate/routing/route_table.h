@@ -48,6 +48,23 @@ public:
         std::string_view host_header,
         std::string_view request_target);
 
+    // AI-CODE-BEGIN: S7-RETRY-AND-HEALTH-ROUTING
+    // 重试时排除本次请求已经尝试过的节点，避免再次选回同一个故障上游。
+    RouteLookupResult lookup(
+        std::string_view host_header,
+        std::string_view request_target,
+        const std::vector<std::string>& excluded_upstream_ids);
+
+    // 按物理地址更新所有路由副本，解决同一节点被多个路由引用时状态不一致的问题。
+    [[nodiscard]] std::size_t set_endpoint_health(
+        std::string_view address,
+        std::uint16_t port,
+        bool healthy) noexcept;
+
+    // 返回去重后的物理节点，供主动健康检查逐个探测。
+    [[nodiscard]] std::vector<UpstreamEndpoint> unique_endpoints() const;
+    // AI-CODE-END: S7-RETRY-AND-HEALTH-ROUTING
+
     [[nodiscard]] bool set_upstream_health(
         std::string_view route_id,
         std::string_view upstream_id,

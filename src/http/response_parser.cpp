@@ -661,6 +661,13 @@ ResponseBodyMode ResponseParser::body_mode() const noexcept
     return body_mode_;
 }
 
+// AI-CODE-BEGIN: S7-STREAMING-RESPONSE-METADATA
+std::size_t ResponseParser::content_length() const noexcept
+{
+    return content_length_;
+}
+// AI-CODE-END: S7-STREAMING-RESPONSE-METADATA
+
 std::size_t ResponseParser::header_bytes() const noexcept
 {
     return header_bytes_;

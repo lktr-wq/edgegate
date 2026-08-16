@@ -109,6 +109,21 @@ std::size_t positive_size(
     }
 }
 
+// AI-CODE-BEGIN: S7-RELIABILITY-CONFIG-PARSING
+std::uint32_t positive_u32(
+    const std::string& path,
+    const YAML::Node& parent,
+    const char* key,
+    std::uint32_t default_value)
+{
+    const std::size_t value = positive_size(path, parent, key, default_value);
+    if (value > std::numeric_limits<std::uint32_t>::max()) {
+        fail(path, parent[key], std::string("'") + key + "' is out of range");
+    }
+    return static_cast<std::uint32_t>(value);
+}
+// AI-CODE-END: S7-RELIABILITY-CONFIG-PARSING
+
 std::uint16_t port_value(
     const std::string& path,
     const YAML::Node& node,
@@ -153,7 +168,9 @@ EdgeGateConfig load_edgegate_config(const std::string& path)
     }
 
     require_map(path, root, "configuration root");
-    reject_unknown_keys(path, root, {"listen", "limits", "upstream_pools", "routes"});
+    reject_unknown_keys(path, root, {
+        "listen", "limits", "stream_buffer", "timeouts", "health_check",
+        "upstream_pools", "routes"});
 
     EdgeGateConfig config;
 
@@ -178,6 +195,90 @@ EdgeGateConfig load_edgegate_config(const std::string& path)
         config.max_response_body_size = positive_size(
             path, limits, "max_response_body_size", config.max_response_body_size);
     }
+
+    // AI-CODE-BEGIN: S7-RELIABILITY-CONFIG-PARSING
+    const YAML::Node stream_buffer = root["stream_buffer"];
+    if (stream_buffer) {
+        require_map(path, stream_buffer, "stream_buffer");
+        reject_unknown_keys(path, stream_buffer, {
+            "capacity", "high_watermark", "low_watermark"});
+        config.stream_buffer.capacity = positive_size(
+            path, stream_buffer, "capacity", config.stream_buffer.capacity);
+        config.stream_buffer.high_watermark = positive_size(
+            path, stream_buffer, "high_watermark",
+            config.stream_buffer.high_watermark);
+        config.stream_buffer.low_watermark = positive_size(
+            path, stream_buffer, "low_watermark",
+            config.stream_buffer.low_watermark);
+        if (config.stream_buffer.low_watermark >=
+                config.stream_buffer.high_watermark ||
+            config.stream_buffer.high_watermark >=
+                config.stream_buffer.capacity) {
+            fail(path, stream_buffer,
+                "stream watermarks must satisfy low < high < capacity");
+        }
+    }
+    constexpr std::size_t stream_overhead = 17 * 1024;
+    if (config.max_header_size >
+            std::numeric_limits<std::size_t>::max() - stream_overhead ||
+        config.stream_buffer.capacity <
+            config.max_header_size + stream_overhead) {
+        fail(path, stream_buffer,
+            "stream_buffer.capacity must leave 17 KiB beyond max_header_size "
+            "for rewritten headers and the first streamed body chunk");
+    }
+
+    const YAML::Node timeouts = root["timeouts"];
+    if (timeouts) {
+        require_map(path, timeouts, "timeouts");
+        reject_unknown_keys(path, timeouts, {
+            "client_header_ms", "upstream_connect_ms", "upstream_header_ms",
+            "io_idle_ms", "request_total_ms", "keep_alive_idle_ms"});
+        config.timeouts.client_header_ms = positive_u32(
+            path, timeouts, "client_header_ms", config.timeouts.client_header_ms);
+        config.timeouts.upstream_connect_ms = positive_u32(
+            path, timeouts, "upstream_connect_ms",
+            config.timeouts.upstream_connect_ms);
+        config.timeouts.upstream_header_ms = positive_u32(
+            path, timeouts, "upstream_header_ms",
+            config.timeouts.upstream_header_ms);
+        config.timeouts.io_idle_ms = positive_u32(
+            path, timeouts, "io_idle_ms", config.timeouts.io_idle_ms);
+        config.timeouts.request_total_ms = positive_u32(
+            path, timeouts, "request_total_ms", config.timeouts.request_total_ms);
+        config.timeouts.keep_alive_idle_ms = positive_u32(
+            path, timeouts, "keep_alive_idle_ms",
+            config.timeouts.keep_alive_idle_ms);
+    }
+
+    const YAML::Node health = root["health_check"];
+    if (health) {
+        require_map(path, health, "health_check");
+        reject_unknown_keys(path, health, {
+            "interval_ms", "timeout_ms", "failure_threshold",
+            "success_threshold", "path"});
+        config.health_check.interval_ms = positive_u32(
+            path, health, "interval_ms", config.health_check.interval_ms);
+        config.health_check.timeout_ms = positive_u32(
+            path, health, "timeout_ms", config.health_check.timeout_ms);
+        config.health_check.failure_threshold = positive_u32(
+            path, health, "failure_threshold",
+            config.health_check.failure_threshold);
+        config.health_check.success_threshold = positive_u32(
+            path, health, "success_threshold",
+            config.health_check.success_threshold);
+        if (health["path"]) {
+            config.health_check.path =
+                required_scalar<std::string>(path, health, "path");
+        }
+        if (config.health_check.path.empty() ||
+            config.health_check.path.front() != '/' ||
+            config.health_check.path.find_first_of("\r\n") != std::string::npos) {
+            fail(path, health["path"],
+                "health_check.path must be a safe origin-form path");
+        }
+    }
+    // AI-CODE-END: S7-RELIABILITY-CONFIG-PARSING
 
     const YAML::Node pools = root["upstream_pools"];
     require_sequence(path, pools, "upstream_pools");

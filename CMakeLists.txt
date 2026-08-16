@@ -45,6 +45,8 @@ target_sources(
     edgegate_core
     PRIVATE
     src/http/response_parser.cpp
+    # 阶段7对 chunked 正文逐段校验，不再为了判断终点缓存完整正文。
+    src/http/chunked_stream_decoder.cpp
 )
 # AI-CODE-END: S3-RESPONSE-PARSER-BUILD
 
@@ -66,6 +68,8 @@ target_sources(
     PRIVATE
     src/proxy/proxy_session.cpp
     src/proxy/proxy_server.cpp
+    # 新服务器承载阶段7流式转发；旧 ProxyServer 保留供阶段5/6对照。
+    src/proxy/reliable_proxy_server.cpp
 )
 # AI-CODE-END: S5-PROXY-STATE-MACHINE-BUILD
 
@@ -177,6 +181,7 @@ target_sources(
     edgegate_http_parser_tests
     PRIVATE
     tests/http_response_parser_test.cpp
+    tests/chunked_stream_decoder_test.cpp
 )
 # AI-CODE-END: S3-RESPONSE-PARSER-TEST-BUILD
 
@@ -231,6 +236,21 @@ gtest_discover_tests(
     edgegate_proxy_tests
 )
 # AI-CODE-END: S5-PROXY-TEST-BUILD
+
+# AI-CODE-BEGIN: S7-RELIABLE-PROXY-TEST-BUILD
+add_executable(
+    edgegate_reliable_proxy_tests
+    tests/reliable_proxy_integration_test.cpp
+)
+target_link_libraries(
+    edgegate_reliable_proxy_tests
+    PRIVATE
+    edgegate_core
+    GTest::gtest_main
+    Threads::Threads
+)
+gtest_discover_tests(edgegate_reliable_proxy_tests)
+# AI-CODE-END: S7-RELIABLE-PROXY-TEST-BUILD
 
 # AI-CODE-BEGIN: S6-ROUTE-TABLE-TEST-BUILD
 add_executable(

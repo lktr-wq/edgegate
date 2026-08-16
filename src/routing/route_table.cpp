@@ -145,6 +145,15 @@ RouteLookupResult RouteTable::lookup(
     std::string_view host_header,
     std::string_view request_target)
 {
+    return lookup(host_header, request_target, {});
+}
+
+// AI-CODE-BEGIN: S7-RETRY-AND-HEALTH-ROUTING
+RouteLookupResult RouteTable::lookup(
+    std::string_view host_header,
+    std::string_view request_target,
+    const std::vector<std::string>& excluded_upstream_ids)
+{
     const std::string host = normalize_host(host_header);
     const std::string_view path = target_path(request_target);
     if (host.empty() || path.empty()) {
@@ -180,7 +189,11 @@ RouteLookupResult RouteTable::lookup(
             (best->round_robin_cursor + offset) % count;
         const UpstreamEndpoint& candidate =
             best->definition.upstreams[index];
-        if (candidate.healthy) {
+        const bool excluded = std::find(
+            excluded_upstream_ids.begin(),
+            excluded_upstream_ids.end(),
+            candidate.id) != excluded_upstream_ids.end();
+        if (candidate.healthy && !excluded) {
             best->round_robin_cursor = (index + 1) % count;
             return {
                 RouteLookupStatus::kMatched,
@@ -194,6 +207,49 @@ RouteLookupResult RouteTable::lookup(
         best->definition.id,
         std::nullopt};
 }
+
+std::size_t RouteTable::set_endpoint_health(
+    std::string_view address,
+    std::uint16_t port,
+    bool healthy) noexcept
+{
+    std::size_t changed = 0;
+    for (RouteState& route : states_) {
+        for (UpstreamEndpoint& upstream : route.definition.upstreams) {
+            if (upstream.address == address && upstream.port == port) {
+                if (upstream.healthy != healthy) {
+                    ++changed;
+                }
+                upstream.healthy = healthy;
+            }
+        }
+    }
+    for (RouteDefinition& route : public_routes_) {
+        for (UpstreamEndpoint& upstream : route.upstreams) {
+            if (upstream.address == address && upstream.port == port) {
+                upstream.healthy = healthy;
+            }
+        }
+    }
+    return changed;
+}
+
+std::vector<UpstreamEndpoint> RouteTable::unique_endpoints() const
+{
+    std::vector<UpstreamEndpoint> result;
+    std::unordered_set<std::string> keys;
+    for (const RouteState& route : states_) {
+        for (const UpstreamEndpoint& upstream : route.definition.upstreams) {
+            const std::string key = upstream.address + ":" +
+                                    std::to_string(upstream.port);
+            if (keys.insert(key).second) {
+                result.push_back(upstream);
+            }
+        }
+    }
+    return result;
+}
+// AI-CODE-END: S7-RETRY-AND-HEALTH-ROUTING
 
 bool RouteTable::set_upstream_health(
     std::string_view route_id,

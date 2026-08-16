@@ -10,6 +10,29 @@ limits:
   max_request_body_size: 1048576
   max_response_body_size: 8388608
 
+# AI-CODE-BEGIN: S7-RELIABILITY-EXAMPLE-CONFIG
+# 每条代理方向最多暂存 256 KiB；达到高水位暂停来源读取，降到低水位再恢复。
+stream_buffer:
+  capacity: 262144
+  high_watermark: 196608
+  low_watermark: 65536
+
+timeouts:
+  client_header_ms: 10000
+  upstream_connect_ms: 2000
+  upstream_header_ms: 5000
+  io_idle_ms: 15000
+  request_total_ms: 60000
+  keep_alive_idle_ms: 30000
+
+health_check:
+  interval_ms: 5000
+  timeout_ms: 1000
+  failure_threshold: 3
+  success_threshold: 2
+  path: /health
+# AI-CODE-END: S7-RELIABILITY-EXAMPLE-CONFIG
+
 # 同一上游池中的健康节点按顺序轮询。主动健康检查将在阶段 7 加入。
 upstream_pools:
   - id: api_pool

@@ -74,6 +74,10 @@ public:
     std::string_view version() const noexcept;//HTTP/1.0或HTTP/1.1
     std::string_view reason_phrase() const noexcept;//OK、Not Found等
     ResponseBodyMode body_mode() const noexcept;//四种正文模式之一
+    // AI-CODE-BEGIN: S7-STREAMING-RESPONSE-METADATA
+    // body_mode()==kContentLength 时返回响应头中已经校验过的正文长度。
+    std::size_t content_length() const noexcept;
+    // AI-CODE-END: S7-STREAMING-RESPONSE-METADATA
 
     std::size_t header_bytes() const noexcept;//Header占多少字节
     std::size_t message_bytes() const noexcept;//当前响应本身占多少字节

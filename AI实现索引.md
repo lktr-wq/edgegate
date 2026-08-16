@@ -55,6 +55,13 @@
 | `S6-ROUTED-PROXY-INTEGRATION-TESTS` | 6 | `tests/proxy_integration_test.cpp` | 三节点轮询、可信转发头、404、503 和客户端 Keep-Alive | 错误码为何在连接上游前确定 | 3 项新增代理测试通过 |
 | `S6-CONFIGURED-SERVICE-MAIN` / `S6-TEST-BACKEND` / `S6-TEST-BACKEND-BUILD` | 6 | 正式服务入口、测试后端和 CMake | `edgegate <yaml>` 与三个可识别后端 | 正式入口与阶段 Demo 的边界 | 真实进程链路通过 |
 | `S6-EXAMPLE-CONFIG` / `S6-YAML-DEPENDENCY` | 6 | `config/edgegate.yaml`、`CMakeLists.txt` | 示例监听、容量、三节点池、精确/通配路由和 yaml-cpp 接入 | 配置字段是否真的生效 | Debug/Sanitizer/Release 94/94 |
+| `S7-RELIABLE-PROXY-SERVER-API` / `S7-RELIABLE-PROXY-SERVER-IMPLEMENTATION` | 7 | `include/edgegate/proxy/reliable_proxy_server.h`、`src/proxy/reliable_proxy_server.cpp` | 双向流式会话、跨端背压、timerfd 超时、GET/HEAD 重试、主动/被动健康检查 | 两个方向何时暂停/恢复，失败能否再发错误响应 | 三构建 110/110 |
+| `S7-CHUNKED-STREAM-DECODER-API` / `IMPLEMENTATION` / `TESTS` | 7 | chunked 流式校验器及测试 | 不缓存完整正文的 chunk size/data/Trailer 状态机和总量限制 | 原始 chunk framing 与解码长度的区别 | 4 项逐字节/错误测试通过 |
+| `S7-STREAMING-HEADER-REWRITER-*` / `S7-STREAMING-RESPONSE-METADATA` | 7 | Header 改写与响应解析器元数据 | 只重建头部，保留 CL/chunked/close 三种流式边界 | 为什么不能继续调用整包重写函数 | 新代理集成测试通过 |
+| `S7-RETRY-AND-HEALTH-ROUTING` / `S7-RETRY-AND-SHARED-HEALTH-ROUTE-TESTS` | 7 | 路由表及测试 | 排除已尝试节点、按物理地址共享健康状态、去重探测节点 | 重试为何不能再次选回失败节点 | 路由全量回归通过 |
+| `S7-RELIABILITY-CONFIG-*` / `S7-RELIABILITY-EXAMPLE-CONFIG` / `TESTS` | 7 | 配置模型、YAML、示例和测试 | 水位、六类超时、健康周期/阈值/路径及关系校验 | 配置字段是否进入不可变运行快照 | 配置全量回归通过 |
+| `S7-RELIABLE-PROXY-INTEGRATION-TESTS` / `S7-RELIABLE-PROXY-TEST-BUILD` | 7 | 新代理集成测试和 CMake | 4 MiB 下行背压、512 KiB 上传、重试、部分响应故障、chunked/关闭定界、504、健康恢复 | 指标是否证明机制真实发生 | 8 项专项集成测试通过 |
+| `S7-FORMAL-SERVICE-SWITCH` | 7 | `apps/edgegate_service_main.cpp` | 正式入口切换到阶段7服务器，保留旧阶段对照实现 | 配置快照如何进入运行时 | 三后端 a/b/c/a/b/c |
 
 ## 贡献边界
 

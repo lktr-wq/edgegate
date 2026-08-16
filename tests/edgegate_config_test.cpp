@@ -128,5 +128,57 @@ TEST(EdgeGateConfigTest, RejectsUnknownPoolReference)
         std::runtime_error);
 }
 
+// AI-CODE-BEGIN: S7-RELIABILITY-CONFIG-TESTS
+// 测试：阶段7的缓冲水位、超时和健康检查字段应从YAML进入配置快照。
+TEST(EdgeGateConfigTest, LoadsReliabilitySettings)
+{
+    std::string yaml_text(kValidYaml);
+    const std::size_t pools = yaml_text.find("upstream_pools:");
+    yaml_text.insert(pools, R"yaml(
+stream_buffer:
+  capacity: 32768
+  high_watermark: 24576
+  low_watermark: 8192
+timeouts:
+  client_header_ms: 101
+  upstream_connect_ms: 102
+  upstream_header_ms: 103
+  io_idle_ms: 104
+  request_total_ms: 105
+  keep_alive_idle_ms: 106
+health_check:
+  interval_ms: 201
+  timeout_ms: 202
+  failure_threshold: 2
+  success_threshold: 3
+  path: /ready
+)yaml");
+    TemporaryYaml yaml(yaml_text);
+    const auto config = edgegate::config::load_edgegate_config(yaml.path());
+    EXPECT_EQ(config.stream_buffer.capacity, 32768U);
+    EXPECT_EQ(config.stream_buffer.high_watermark, 24576U);
+    EXPECT_EQ(config.stream_buffer.low_watermark, 8192U);
+    EXPECT_EQ(config.timeouts.upstream_header_ms, 103U);
+    EXPECT_EQ(config.health_check.failure_threshold, 2U);
+    EXPECT_EQ(config.health_check.path, "/ready");
+}
+
+// 测试：低水位、高水位和容量的顺序不合理时，应在服务启动前拒绝配置。
+TEST(EdgeGateConfigTest, RejectsInvalidStreamWatermarks)
+{
+    std::string yaml_text(kValidYaml);
+    yaml_text.insert(yaml_text.find("upstream_pools:"), R"yaml(
+stream_buffer:
+  capacity: 4096
+  high_watermark: 1024
+  low_watermark: 2048
+)yaml");
+    TemporaryYaml yaml(yaml_text);
+    EXPECT_THROW(
+        static_cast<void>(edgegate::config::load_edgegate_config(yaml.path())),
+        std::runtime_error);
+}
+// AI-CODE-END: S7-RELIABILITY-CONFIG-TESTS
+
 } // namespace
 // AI-CODE-END: S6-YAML-CONFIG-TESTS

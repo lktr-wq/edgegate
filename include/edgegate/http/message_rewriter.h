@@ -25,5 +25,16 @@ namespace edgegate::http {
     const ResponseParser& response,
     bool close_client_connection);
 
+// AI-CODE-BEGIN: S7-STREAMING-HEADER-REWRITER-API
+// 只重新生成 Header，不附加 Body；Body 将由阶段7缓冲区边读边转发。
+[[nodiscard]] std::string rewrite_request_head_for_upstream(
+    const RequestParser& request,
+    std::string_view client_address);
+
+[[nodiscard]] std::string rewrite_response_head_for_client(
+    const ResponseParser& response,
+    bool close_client_connection);
+// AI-CODE-END: S7-STREAMING-HEADER-REWRITER-API
+
 } // namespace edgegate::http
 // AI-CODE-END: S6-HEADER-REWRITER-API

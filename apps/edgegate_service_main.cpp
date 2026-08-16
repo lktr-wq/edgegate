@@ -1,11 +1,9 @@
 #include "edgegate/config/edgegate_config.h"
-#include "edgegate/proxy/proxy_server.h"
-#include "edgegate/routing/route_table.h"
+#include "edgegate/proxy/reliable_proxy_server.h"
 
 // AI-CODE-BEGIN: S6-CONFIGURED-SERVICE-MAIN
 #include <exception>
 #include <iostream>
-#include <memory>
 #include <string>
 #include <utility>
 
@@ -15,23 +13,18 @@ int main(int argc, char* argv[])
         argc > 1 ? argv[1] : "config/edgegate.yaml";
 
     try {
-        const auto loaded = edgegate::config::load_edgegate_config(config_path);
+        auto loaded = edgegate::config::load_edgegate_config(config_path);
+        const std::string listen_address = loaded.listen_address;
+        const std::size_t route_count = loaded.routes.size();
 
-        edgegate::proxy::ProxyConfig proxy_config;
-        proxy_config.max_header_size = loaded.max_header_size;
-        proxy_config.max_request_body_size = loaded.max_request_body_size;
-        proxy_config.max_response_body_size = loaded.max_response_body_size;
-        proxy_config.route_table =
-            std::make_shared<edgegate::routing::RouteTable>(loaded.routes);
-
-        edgegate::proxy::ProxyServer server(
-            loaded.listen_address,
-            loaded.listen_port,
-            std::move(proxy_config));
+        // AI-CODE-BEGIN: S7-FORMAL-SERVICE-SWITCH
+        // 正式 edgegate 从阶段6整包代理切换到阶段7流式、超时和健康检查实现。
+        edgegate::proxy::ReliableProxyServer server(std::move(loaded));
+        // AI-CODE-END: S7-FORMAL-SERVICE-SWITCH
 
         std::cout << "EdgeGate listening on "
-                  << loaded.listen_address << ':' << server.port()
-                  << " with " << loaded.routes.size() << " routes"
+                  << listen_address << ':' << server.port()
+                  << " with " << route_count << " routes"
                   << std::endl;
         server.run();
     } catch (const std::exception& error) {

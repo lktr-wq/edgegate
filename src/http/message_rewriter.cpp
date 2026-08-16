@@ -120,6 +120,82 @@ std::string rewrite_request_for_upstream(
     return message;
 }
 
+// AI-CODE-BEGIN: S7-STREAMING-HEADER-REWRITER-IMPLEMENTATION
+std::string rewrite_request_head_for_upstream(
+    const RequestParser& request,
+    std::string_view client_address)
+{
+    const auto removed = hop_by_hop_headers(request.headers());
+    std::string message;
+    message.reserve(request.header_bytes() + 256);
+    message.append(request.method());
+    message += ' ';
+    message.append(request.target());
+    message += ' ';
+    message.append(request.version());
+    message += "\r\n";
+
+    for (const HeaderField& header : request.headers()) {
+        const std::string name = lowercase(header.name);
+        if (removed.count(name) != 0U || name == "host" ||
+            name == "content-length" || name == "x-forwarded-for" ||
+            name == "x-forwarded-host" || name == "x-forwarded-proto") {
+            continue;
+        }
+        append_header(message, header.name, header.value);
+    }
+    append_header(message, "Host", *request.header_value("Host"));
+    if (request.header_value("Content-Length").has_value()) {
+        append_header(message, "Content-Length",
+                      *request.header_value("Content-Length"));
+    }
+    append_header(message, "X-Forwarded-For", client_address);
+    append_header(message, "X-Forwarded-Host", *request.header_value("Host"));
+    append_header(message, "X-Forwarded-Proto", "http");
+    append_header(message, "Connection", "close");
+    message += "\r\n";
+    return message;
+}
+
+std::string rewrite_response_head_for_client(
+    const ResponseParser& response,
+    bool close_client_connection)
+{
+    auto removed = hop_by_hop_headers(response.headers());
+    removed.insert("content-length");
+
+    std::string message;
+    message.reserve(response.header_bytes() + 128);
+    message.append(response.version());
+    message += ' ';
+    message += std::to_string(response.status_code());
+    message += ' ';
+    message.append(response.reason_phrase());
+    message += "\r\n";
+
+    for (const HeaderField& header : response.headers()) {
+        if (removed.count(lowercase(header.name)) == 0U) {
+            append_header(message, header.name, header.value);
+        }
+    }
+    if (response.body_mode() == ResponseBodyMode::kContentLength) {
+        append_header(message, "Content-Length",
+                      std::to_string(response.content_length()));
+    } else if (response.body_mode() == ResponseBodyMode::kChunked) {
+        // 保留原始 chunk framing，代理只增量校验，不把整个正文解码后重组。
+        append_header(message, "Transfer-Encoding", "chunked");
+    } else if (response.body_mode() == ResponseBodyMode::kNoBody &&
+               response.header_value("Content-Length").has_value()) {
+        append_header(message, "Content-Length",
+                      *response.header_value("Content-Length"));
+    }
+    append_header(message, "Connection",
+                  close_client_connection ? "close" : "keep-alive");
+    message += "\r\n";
+    return message;
+}
+// AI-CODE-END: S7-STREAMING-HEADER-REWRITER-IMPLEMENTATION
+
 std::string rewrite_response_for_client(
     const ResponseParser& response,
     bool close_client_connection)

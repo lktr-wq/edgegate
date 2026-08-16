@@ -183,6 +183,34 @@ TEST(RouteTableTest, ReportsMissingHealthTargetWithoutMutation)
         RouteLookupStatus::kMatched);
 }
 
+// AI-CODE-BEGIN: S7-RETRY-AND-SHARED-HEALTH-ROUTE-TESTS
+// 测试：安全重试必须排除已尝试节点，并选择同一路由中的下一个健康节点。
+TEST(RouteTableTest, ExcludesPreviouslyAttemptedUpstreamDuringRetry)
+{
+    RouteTable table({route(
+        "api", "api.example.com", "/",
+        {upstream("one", 9001), upstream("two", 9002)})});
+    const auto result = table.lookup(
+        "api.example.com", "/", std::vector<std::string>{"one"});
+    ASSERT_EQ(result.status, RouteLookupStatus::kMatched);
+    EXPECT_EQ(result.upstream->id, "two");
+}
+
+// 测试：同一物理地址被两个路由复制引用时，一次健康更新应同步摘除两份副本。
+TEST(RouteTableTest, SharesPhysicalEndpointHealthAcrossRoutes)
+{
+    RouteTable table({
+        route("one", "one.example.com", "/", {upstream("a", 9001)}),
+        route("two", "two.example.com", "/", {upstream("alias", 9001)})});
+    EXPECT_EQ(table.unique_endpoints().size(), 1U);
+    EXPECT_EQ(table.set_endpoint_health("127.0.0.1", 9001, false), 2U);
+    EXPECT_EQ(table.lookup("one.example.com", "/").status,
+              RouteLookupStatus::kNoHealthyUpstream);
+    EXPECT_EQ(table.lookup("two.example.com", "/").status,
+              RouteLookupStatus::kNoHealthyUpstream);
+}
+// AI-CODE-END: S7-RETRY-AND-SHARED-HEALTH-ROUTE-TESTS
+
 // 测试：配置或查询中的非法 Host 语法、标签格式和端口应被拒绝或判定为无路由。
 TEST(RouteTableTest, RejectsInvalidHostSyntaxAndPort)
 {
