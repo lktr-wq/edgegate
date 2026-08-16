@@ -187,7 +187,12 @@ private:
 class RunningProxy {
 public:
     explicit RunningProxy(std::uint16_t upstream_port)
-        : server_("127.0.0.1", 0, make_config(upstream_port)),
+        : RunningProxy(make_config(upstream_port))
+    {
+    }
+
+    explicit RunningProxy(ProxyConfig config)
+        : server_("127.0.0.1", 0, std::move(config)),
           thread_([this] { run(); })
     {
     }
@@ -547,6 +552,85 @@ TEST(ProxyIntegrationTest, ReleasesAllDescriptorsAfterRepeatedSessions)
 
     EXPECT_EQ(count_open_file_descriptors(), descriptors_before);
 }
+
+// AI-CODE-BEGIN: S6-ROUTED-PROXY-INTEGRATION-TESTS
+ProxyConfig routed_config(
+    std::vector<edgegate::routing::UpstreamEndpoint> upstreams,
+    std::string host = "api.edgegate.test",
+    std::string path = "/api")
+{
+    ProxyConfig config;
+    config.route_table = std::make_shared<edgegate::routing::RouteTable>(
+        std::vector<edgegate::routing::RouteDefinition>{
+            {"api-route", std::move(host), std::move(path), std::move(upstreams)}});
+    return config;
+}
+
+std::string backend_response(std::string_view name)
+{
+    return "HTTP/1.1 200 OK\r\nContent-Length: " +
+           std::to_string(name.size()) +
+           "\r\nConnection: close\r\n\r\n" + std::string(name);
+}
+
+// 测试：同一客户端的三轮 Keep-Alive 请求应依次到达三个上游，并收到三个可识别结果。
+TEST(Stage6ProxyIntegrationTest, RoutesAndRoundRobinsAcrossThreeBackends)
+{
+    ScriptedUpstream backend_a({backend_response("backend-a")});
+    ScriptedUpstream backend_b({backend_response("backend-b")});
+    ScriptedUpstream backend_c({backend_response("backend-c")});
+    RunningProxy proxy(routed_config({
+        {"a", "127.0.0.1", backend_a.port(), true},
+        {"b", "127.0.0.1", backend_b.port(), true},
+        {"c", "127.0.0.1", backend_c.port(), true}}));
+
+    UniqueFd client = connect_client(proxy.port());
+    for (const std::string_view expected : {"backend-a", "backend-b", "backend-c"}) {
+        send_all(
+            client.get(),
+            "GET /api/items HTTP/1.1\r\n"
+            "Host: api.edgegate.test\r\n"
+            "X-Forwarded-For: 1.2.3.4\r\n\r\n");
+        EXPECT_NE(receive_response(client.get()).find(expected), std::string::npos);
+    }
+
+    backend_a.wait();
+    backend_b.wait();
+    backend_c.wait();
+    for (const ScriptedUpstream* backend : {&backend_a, &backend_b, &backend_c}) {
+        const auto requests = backend->requests();
+        ASSERT_EQ(requests.size(), 1U);
+        EXPECT_NE(requests[0].find("X-Forwarded-For: 127.0.0.1\r\n"),
+                  std::string::npos);
+        EXPECT_EQ(requests[0].find("1.2.3.4"), std::string::npos);
+        EXPECT_NE(requests[0].find("Connection: close\r\n"), std::string::npos);
+    }
+}
+
+// 测试：Host 或路径没有任何匹配路由时，应直接返回 404，不尝试连接上游。
+TEST(Stage6ProxyIntegrationTest, Returns404WhenNoRouteMatches)
+{
+    RunningProxy proxy(routed_config({{"unused", "127.0.0.1", 1, true}}));
+    UniqueFd client = connect_client(proxy.port());
+    send_all(client.get(),
+             "GET /wrong HTTP/1.1\r\nHost: api.edgegate.test\r\n\r\n");
+    EXPECT_EQ(receive_response(client.get()).find("HTTP/1.1 404 Not Found\r\n"),
+              0U);
+}
+
+// 测试：路由存在但所有节点都不健康时，应返回 503，而不是错误地尝试连接并返回 502。
+TEST(Stage6ProxyIntegrationTest, Returns503WhenRouteHasNoHealthyUpstream)
+{
+    RunningProxy proxy(routed_config({{"down", "127.0.0.1", 1, false}}));
+    UniqueFd client = connect_client(proxy.port());
+    send_all(client.get(),
+             "GET /api HTTP/1.1\r\nHost: api.edgegate.test\r\n\r\n");
+    EXPECT_EQ(
+        receive_response(client.get()).find(
+            "HTTP/1.1 503 Service Unavailable\r\n"),
+        0U);
+}
+// AI-CODE-END: S6-ROUTED-PROXY-INTEGRATION-TESTS
 
 } // namespace
 // AI-CODE-END: S5-PROXY-INTEGRATION-TESTS

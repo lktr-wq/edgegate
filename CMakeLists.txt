@@ -10,6 +10,11 @@ project(
     LANGUAGES CXX
 )
 
+# AI-CODE-BEGIN: S6-YAML-DEPENDENCY
+# yaml-cpp 只负责 YAML 语法树；字段、范围和引用关系仍由 EdgeGate 校验。
+find_package(yaml-cpp REQUIRED)
+# AI-CODE-END: S6-YAML-DEPENDENCY
+
 #使用 C++17。
 #编译器必须支持 C++17，不能自动降级。
 #不使用编译器私有扩展，尽量保持标准 C++。
@@ -68,6 +73,8 @@ target_sources(
 target_sources(
     edgegate_core
     PRIVATE
+    src/config/edgegate_config.cpp
+    src/http/message_rewriter.cpp
     src/routing/route_table.cpp
 )
 # AI-CODE-END: S6-ROUTE-TABLE-BUILD
@@ -80,10 +87,16 @@ target_include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
-#创建程序目标名称 = edgegate 源文件 = apps/edgegate_main.cpp
+target_link_libraries(
+    edgegate_core
+    PUBLIC
+    yaml-cpp
+)
+
+# 正式 edgegate 已在阶段6切换为读取 YAML 的非阻塞代理入口。
 add_executable(
     edgegate
-    apps/edgegate_main.cpp
+    apps/edgegate_service_main.cpp
 )
 
 # 正式程序链接核心库。
@@ -123,6 +136,13 @@ target_link_libraries(
     edgegate_core
 )
 # AI-CODE-END: S5-PROXY-DEMO-BUILD
+
+# AI-CODE-BEGIN: S6-TEST-BACKEND-BUILD
+add_executable(
+    edgegate_test_backend
+    apps/test_backend_main.cpp
+)
+# AI-CODE-END: S6-TEST-BACKEND-BUILD
 
 #启用CTest
 enable_testing()
@@ -216,6 +236,8 @@ gtest_discover_tests(
 add_executable(
     edgegate_route_tests
     tests/route_table_test.cpp
+    tests/edgegate_config_test.cpp
+    tests/message_rewriter_test.cpp
 )
 target_link_libraries(
     edgegate_route_tests

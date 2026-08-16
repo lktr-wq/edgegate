@@ -56,16 +56,26 @@ public:
         }
 
         for (;;) {
+            sockaddr_in peer{};
+            socklen_t peer_length = sizeof(peer);
             const int accepted_fd = ::accept4(
                 listener_.get(),
-                nullptr,
-                nullptr,
+                reinterpret_cast<sockaddr*>(&peer),
+                &peer_length,
                 SOCK_NONBLOCK | SOCK_CLOEXEC);
             if (accepted_fd >= 0) {
                 edgegate::net::UniqueFd client(accepted_fd);
                 try {
+                    char peer_text[INET_ADDRSTRLEN]{};
+                    if (::inet_ntop(
+                            AF_INET,
+                            &peer.sin_addr,
+                            peer_text,
+                            sizeof(peer_text)) == nullptr) {
+                        throw std::runtime_error("failed to format client IPv4 address");
+                    }
                     auto session = std::make_shared<ProxySession>(
-                        accepted_fd, config_, stats_);
+                        accepted_fd, peer_text, config_, stats_);
                     loop.add(std::make_unique<ProxyEndpoint>(
                         std::move(client), EndpointRole::kClient, session));
                     ++stats_->accepted;

@@ -49,6 +49,12 @@
 | `S6-ROUTE-TABLE-API` / `S6-ROUTE-TABLE-IMPLEMENTATION` | 6 | `include/edgegate/routing/route_table.h`、`src/routing/route_table.cpp` | Host 语法/端口规范化、精确/通配优先级、最长路径前缀、健康上游轮询 | 路由优先级是否符合产品预期 | 普通与 Sanitizer 11/11 |
 | `S6-ROUTE-TABLE-TESTS` / `S6-ROUTE-TABLE-TEST-BUILD` | 6 | `tests/route_table_test.cpp`、`CMakeLists.txt` | 匹配优先级、Host语法、端口、查询串、轮询、无健康节点和配置冲突测试 | 字面前缀与通配语义 | 11/11 |
 | `S6-ROUTE-TABLE-BUILD` | 6 | `CMakeLists.txt` | 将纯 C++ 路由核心加入核心库 | YAML 接入前后是否复用同一规则 | 严格编译零警告 |
+| `S6-YAML-CONFIG-API` / `S6-YAML-CONFIG-IMPLEMENTATION` / `S6-YAML-CONFIG-TESTS` | 6 | `include/edgegate/config/edgegate_config.h`、`src/config/edgegate_config.cpp`、配置测试 | YAML 加载、未知字段、类型/范围、IPv4、池引用和路由语义校验 | 为什么配置只能包含已经生效的能力 | 三套构建全量通过 |
+| `S6-HEADER-REWRITER-API` / `S6-HEADER-REWRITER-IMPLEMENTATION` / `S6-HEADER-REWRITER-TESTS` | 6 | Header 改写头文件、实现和测试 | 隔离两侧连接 Header、重建可信 `X-Forwarded-*`、响应改为明确长度 | 为什么反代不能原样复制 Connection | 三套构建全量通过 |
+| `S6-PROXY-ROUTING-API` / `S6-PROXY-ROUTING-STATE` | 6 | `proxy_session.h` | 共享路由表、客户端地址与当轮上游状态 | 固定上游模式和路由模式如何共存 | 旧阶段测试保持通过 |
+| `S6-ROUTED-PROXY-INTEGRATION-TESTS` | 6 | `tests/proxy_integration_test.cpp` | 三节点轮询、可信转发头、404、503 和客户端 Keep-Alive | 错误码为何在连接上游前确定 | 3 项新增代理测试通过 |
+| `S6-CONFIGURED-SERVICE-MAIN` / `S6-TEST-BACKEND` / `S6-TEST-BACKEND-BUILD` | 6 | 正式服务入口、测试后端和 CMake | `edgegate <yaml>` 与三个可识别后端 | 正式入口与阶段 Demo 的边界 | 真实进程链路通过 |
+| `S6-EXAMPLE-CONFIG` / `S6-YAML-DEPENDENCY` | 6 | `config/edgegate.yaml`、`CMakeLists.txt` | 示例监听、容量、三节点池、精确/通配路由和 yaml-cpp 接入 | 配置字段是否真的生效 | Debug/Sanitizer/Release 94/94 |
 
 ## 贡献边界
 

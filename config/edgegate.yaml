@@ -1,0 +1,37 @@
+# AI-CODE-BEGIN: S6-EXAMPLE-CONFIG
+# EdgeGate 当前监听 Ubuntu 本机 18080 端口。
+listen:
+  address: 127.0.0.1
+  port: 18080
+
+# 这些容量限制已经由阶段 3/5 的解析器和代理缓冲区实际执行。
+limits:
+  max_header_size: 8192
+  max_request_body_size: 1048576
+  max_response_body_size: 8388608
+
+# 同一上游池中的健康节点按顺序轮询。主动健康检查将在阶段 7 加入。
+upstream_pools:
+  - id: api_pool
+    endpoints:
+      - id: backend-a
+        address: 127.0.0.1
+        port: 19081
+      - id: backend-b
+        address: 127.0.0.1
+        port: 19082
+      - id: backend-c
+        address: 127.0.0.1
+        port: 19083
+
+routes:
+  - id: api-route
+    host: api.edgegate.test
+    path_prefix: /api
+    upstream_pool: api_pool
+
+  - id: static-route
+    host: "*.edgegate.test"
+    path_prefix: /static
+    upstream_pool: api_pool
+# AI-CODE-END: S6-EXAMPLE-CONFIG
