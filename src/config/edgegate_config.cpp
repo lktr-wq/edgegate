@@ -212,7 +212,7 @@ EdgeGateConfig load_edgegate_config(const std::string& path)
     require_map(path, root, "configuration root");
     reject_unknown_keys(path, root, {
         "listen", "limits", "stream_buffer", "timeouts", "health_check",
-        "management", "logging", "upstream_pools", "routes"});
+        "management", "logging", "dashboard", "upstream_pools", "routes"});
 
     EdgeGateConfig config;
 
@@ -377,6 +377,63 @@ EdgeGateConfig load_edgegate_config(const std::string& path)
         }
     }
     // AI-CODE-END: S8-MANAGEMENT-AND-LOGGING-CONFIG-PARSING
+
+    // AI-CODE-BEGIN: S9-DASHBOARD-CONFIG-PARSING
+    const YAML::Node dashboard = root["dashboard"];
+    if (dashboard) {
+        require_map(path, dashboard, "dashboard");
+        reject_unknown_keys(path, dashboard, {
+            "enabled", "address", "port", "refresh_interval_ms",
+            "recent_error_limit", "slow_request_threshold_ms",
+            "slow_request_limit"});
+        config.dashboard.enabled = optional_bool(
+            path, dashboard, "enabled", config.dashboard.enabled);
+        config.dashboard.address = optional_string(
+            path, dashboard, "address", config.dashboard.address);
+        if (dashboard["port"]) {
+            config.dashboard.port = port_value(
+                path, dashboard["port"], "dashboard.port");
+        }
+        config.dashboard.refresh_interval_ms = positive_u32(
+            path, dashboard, "refresh_interval_ms",
+            config.dashboard.refresh_interval_ms);
+        config.dashboard.recent_error_limit = positive_size(
+            path, dashboard, "recent_error_limit",
+            config.dashboard.recent_error_limit);
+        config.dashboard.slow_request_threshold_ms = positive_u32(
+            path, dashboard, "slow_request_threshold_ms",
+            config.dashboard.slow_request_threshold_ms);
+        config.dashboard.slow_request_limit = positive_size(
+            path, dashboard, "slow_request_limit",
+            config.dashboard.slow_request_limit);
+
+        require_ipv4(
+            path, dashboard["address"], config.dashboard.address,
+            "dashboard.address");
+        if (config.dashboard.enabled &&
+            config.dashboard.address != "127.0.0.1") {
+            fail(path, dashboard["address"],
+                "dashboard.address must be 127.0.0.1 in v1");
+        }
+        if (config.dashboard.refresh_interval_ms < 250 ||
+            config.dashboard.refresh_interval_ms > 60000) {
+            fail(path, dashboard["refresh_interval_ms"],
+                "dashboard.refresh_interval_ms must be 250..60000");
+        }
+        if (config.dashboard.recent_error_limit > 500) {
+            fail(path, dashboard["recent_error_limit"],
+                "dashboard.recent_error_limit must be <= 500");
+        }
+        if (config.dashboard.slow_request_threshold_ms > 3600000) {
+            fail(path, dashboard["slow_request_threshold_ms"],
+                "dashboard.slow_request_threshold_ms must be <= 3600000");
+        }
+        if (config.dashboard.slow_request_limit > 200) {
+            fail(path, dashboard["slow_request_limit"],
+                "dashboard.slow_request_limit must be <= 200");
+        }
+    }
+    // AI-CODE-END: S9-DASHBOARD-CONFIG-PARSING
 
     const YAML::Node pools = root["upstream_pools"];
     require_sequence(path, pools, "upstream_pools");

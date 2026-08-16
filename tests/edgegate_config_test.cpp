@@ -241,5 +241,61 @@ logging:
 }
 // AI-CODE-END: S8-MANAGEMENT-LOGGING-CONFIG-TESTS
 
+// AI-CODE-BEGIN: S9-DASHBOARD-CONFIG-TESTS
+// 测试：Dashboard 的独立本机端口、刷新周期和两个有界记录参数应进入配置快照。
+TEST(EdgeGateConfigTest, LoadsDashboardSettings)
+{
+    std::string yaml_text(kValidYaml);
+    yaml_text.insert(yaml_text.find("upstream_pools:"), R"yaml(
+dashboard:
+  enabled: true
+  address: 127.0.0.1
+  port: 18081
+  refresh_interval_ms: 750
+  recent_error_limit: 25
+  slow_request_threshold_ms: 300
+  slow_request_limit: 10
+)yaml");
+    TemporaryYaml yaml(yaml_text);
+    const auto config = edgegate::config::load_edgegate_config(yaml.path());
+    EXPECT_TRUE(config.dashboard.enabled);
+    EXPECT_EQ(config.dashboard.address, "127.0.0.1");
+    EXPECT_EQ(config.dashboard.port, 18081);
+    EXPECT_EQ(config.dashboard.refresh_interval_ms, 750U);
+    EXPECT_EQ(config.dashboard.recent_error_limit, 25U);
+    EXPECT_EQ(config.dashboard.slow_request_threshold_ms, 300U);
+    EXPECT_EQ(config.dashboard.slow_request_limit, 10U);
+}
+
+// 测试：v1 Dashboard 若绑定非本机地址会暴露运行信息，配置加载阶段必须拒绝。
+TEST(EdgeGateConfigTest, RejectsNonLoopbackDashboardAddress)
+{
+    std::string yaml_text(kValidYaml);
+    yaml_text.insert(yaml_text.find("upstream_pools:"), R"yaml(
+dashboard:
+  enabled: true
+  address: 0.0.0.0
+)yaml");
+    TemporaryYaml yaml(yaml_text);
+    EXPECT_THROW(
+        static_cast<void>(edgegate::config::load_edgegate_config(yaml.path())),
+        std::runtime_error);
+}
+
+// 测试：刷新过快会让浏览器持续占用事件循环，必须执行 250 ms 下限。
+TEST(EdgeGateConfigTest, RejectsDashboardRefreshBelowLimit)
+{
+    std::string yaml_text(kValidYaml);
+    yaml_text.insert(yaml_text.find("upstream_pools:"), R"yaml(
+dashboard:
+  refresh_interval_ms: 100
+)yaml");
+    TemporaryYaml yaml(yaml_text);
+    EXPECT_THROW(
+        static_cast<void>(edgegate::config::load_edgegate_config(yaml.path())),
+        std::runtime_error);
+}
+// AI-CODE-END: S9-DASHBOARD-CONFIG-TESTS
+
 } // namespace
 // AI-CODE-END: S6-YAML-CONFIG-TESTS

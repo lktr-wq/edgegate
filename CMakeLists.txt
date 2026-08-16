@@ -90,6 +90,10 @@ target_sources(
     src/runtime/management_server.cpp
     src/runtime/signal_control.cpp
     # AI-CODE-END: S8-RUNTIME-BUILD
+    # AI-CODE-BEGIN: S9-OBSERVABILITY-BUILD
+    src/runtime/observability.cpp
+    src/runtime/dashboard_server.cpp
+    # AI-CODE-END: S9-OBSERVABILITY-BUILD
 )
 # AI-CODE-END: S6-ROUTE-TABLE-BUILD
 
@@ -260,6 +264,10 @@ add_executable(
     # AI-CODE-BEGIN: S8-RUNTIME-TEST-BUILD
     tests/runtime_management_integration_test.cpp
     # AI-CODE-END: S8-RUNTIME-TEST-BUILD
+    # AI-CODE-BEGIN: S9-OBSERVABILITY-TEST-BUILD
+    tests/observability_test.cpp
+    tests/dashboard_server_test.cpp
+    # AI-CODE-END: S9-OBSERVABILITY-TEST-BUILD
 )
 target_link_libraries(
     edgegate_reliable_proxy_tests

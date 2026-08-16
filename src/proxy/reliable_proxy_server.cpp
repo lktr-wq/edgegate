@@ -14,6 +14,10 @@
 #include "edgegate/runtime/runtime_logger.h"
 #include "edgegate/runtime/signal_control.h"
 // AI-CODE-END: S8-RUNTIME-INTEGRATION-INCLUDES
+// AI-CODE-BEGIN: S9-OBSERVABILITY-INTEGRATION-INCLUDES
+#include "edgegate/runtime/dashboard_server.h"
+#include "edgegate/runtime/observability.h"
+// AI-CODE-END: S9-OBSERVABILITY-INTEGRATION-INCLUDES
 
 #include <algorithm>
 #include <array>
@@ -189,6 +193,10 @@ public:
           routes_(std::make_shared<edgegate::routing::RouteTable>(config_.routes)),
           config_path_(std::move(config_path)),
           logger_(std::make_shared<edgegate::runtime::RuntimeLogger>(config_.logging)),
+          // AI-CODE-BEGIN: S9-OBSERVABILITY-CONSTRUCTION
+          observability_(std::make_shared<edgegate::runtime::ObservabilityStore>(
+              config_.dashboard)),
+          // AI-CODE-END: S9-OBSERVABILITY-CONSTRUCTION
           started_at_(Clock::now())
     {
         rebuild_health(Clock::now());
@@ -247,10 +255,47 @@ public:
 
     void record_upstream_result(
         const edgegate::routing::UpstreamEndpoint& endpoint,
-        bool success) noexcept
+        bool success,
+        bool timeout = false) noexcept
     {
+        // AI-CODE-BEGIN: S9-UPSTREAM-METRICS
+        observability_->record_upstream_result(endpoint, success, timeout);
+        // AI-CODE-END: S9-UPSTREAM-METRICS
         record_result(endpoint_key(endpoint.address, endpoint.port), success);
     }
+
+    // AI-CODE-BEGIN: S9-OBSERVABILITY-RUNTIME-API
+    void record_request(
+        std::string_view method,
+        std::string_view path,
+        std::string_view route_id,
+        const edgegate::routing::UpstreamEndpoint* upstream,
+        int status,
+        std::uint64_t response_bytes,
+        std::uint64_t latency_ms,
+        std::size_t attempts) noexcept
+    {
+        try {
+            observability_->record_request(
+                method, path, route_id, upstream, status,
+                response_bytes, latency_ms, attempts);
+        } catch (...) {
+        }
+    }
+
+    void record_error(
+        std::string_view category,
+        std::string_view detail) noexcept
+    {
+        logger_->error(category, detail);
+        try {
+            observability_->record_error(category, detail);
+        } catch (...) {
+        }
+    }
+
+    [[nodiscard]] nlohmann::json dashboard_json() const;
+    // AI-CODE-END: S9-OBSERVABILITY-RUNTIME-API
 
 private:
     static std::string endpoint_key(std::string_view address, std::uint16_t port)
@@ -284,6 +329,9 @@ private:
     // AI-CODE-BEGIN: S8-RUNTIME-CONTROL-FIELDS
     std::string config_path_;
     std::shared_ptr<edgegate::runtime::RuntimeLogger> logger_;
+    // AI-CODE-BEGIN: S9-OBSERVABILITY-FIELD
+    std::shared_ptr<edgegate::runtime::ObservabilityStore> observability_;
+    // AI-CODE-END: S9-OBSERVABILITY-FIELD
     Clock::time_point started_at_{};
     std::optional<int> listener_fd_;
     ServiceMode mode_{ServiceMode::kRunning};
@@ -410,6 +458,9 @@ private:
     std::string request_method_;
     std::string request_host_;
     std::string request_target_;
+    // AI-CODE-BEGIN: S9-REQUEST-ROUTE-STATE
+    std::string matched_route_id_;
+    // AI-CODE-END: S9-REQUEST-ROUTE-STATE
     std::string upstream_request_head_;
     std::size_t request_body_expected_{0};
     std::size_t request_body_received_{0};
@@ -699,6 +750,9 @@ bool ReliableSession::finish_request_head(
     // AI-CODE-BEGIN: S8-IN-FLIGHT-CONFIG-SNAPSHOT
     request_routes_ = runtime_->routes();
     const auto route = request_routes_->lookup(request_host_, request_target_);
+    // Dashboard 需要知道请求最终命中了哪条路由；没有匹配时保持为空，
+    // 指标层会把它归入 unmatched。
+    matched_route_id_ = route.route_id;
     // AI-CODE-END: S8-IN-FLIGHT-CONFIG-SNAPSHOT
     if (route.status == edgegate::routing::RouteLookupStatus::kNoRoute) {
         queue_error(loop, 404, "Not Found");
@@ -1065,6 +1119,9 @@ void ReliableSession::reset_for_keep_alive() noexcept
     request_method_.clear();
     request_host_.clear();
     request_target_.clear();
+    // AI-CODE-BEGIN: S9-RESET-REQUEST-ROUTE
+    matched_route_id_.clear();
+    // AI-CODE-END: S9-RESET-REQUEST-ROUTE
     upstream_request_head_.clear();
     request_body_expected_ = 0;
     request_body_received_ = 0;
@@ -1108,14 +1165,14 @@ void ReliableSession::upstream_failure(
         detail += " upstream=" + selected_upstream_->address + ":" +
                   std::to_string(selected_upstream_->port);
     }
-    runtime_->logger()->error("upstream_failure", detail);
+    runtime_->record_error("upstream_failure", detail);
     // AI-CODE-END: S8-UPSTREAM-ERROR-LOG
     ++runtime_->stats()->upstream_errors;
     if (timeout) {
         ++runtime_->stats()->upstream_timeouts;
     }
     if (selected_upstream_.has_value()) {
-        runtime_->record_upstream_result(*selected_upstream_, false);
+        runtime_->record_upstream_result(*selected_upstream_, false, timeout);
     }
     close_upstream(loop);
     if (client_response_bytes_sent_ == 0 && retry_upstream(loop)) {
@@ -1169,7 +1226,8 @@ void ReliableSession::queue_error(
 {
     // AI-CODE-BEGIN: S8-ERROR-RESPONSE-LOG-STATE
     response_status_code_ = status;
-    runtime_->logger()->error("proxy_response", std::to_string(status) + " " + reason);
+    runtime_->record_error(
+        "proxy_response", std::to_string(status) + " " + reason);
     // AI-CODE-END: S8-ERROR-RESPONSE-LOG-STATE
     close_upstream(loop);
     to_upstream_.clear();
@@ -1279,6 +1337,19 @@ void ReliableSession::log_access_once() noexcept
         client_response_bytes_sent_,
         latency,
         upstream);
+
+    // AI-CODE-BEGIN: S9-COMPLETE-REQUEST-METRICS
+    // 这里代表输出缓冲区已经写空，是一次请求完成统计的唯一入口。
+    runtime_->record_request(
+        request_method_.empty() ? "unknown" : request_method_,
+        safe_target.empty() ? "/" : safe_target,
+        matched_route_id_,
+        selected_upstream_.has_value() ? &*selected_upstream_ : nullptr,
+        response_status_code_,
+        client_response_bytes_sent_,
+        latency < 0 ? 0U : static_cast<std::uint64_t>(latency),
+        attempted_upstream_ids_.size());
+    // AI-CODE-END: S9-COMPLETE-REQUEST-METRICS
 }
 
 void ReliableSession::begin_drain(edgegate::net::EventLoop& loop) noexcept
@@ -1417,7 +1488,7 @@ nlohmann::json ReliableRuntime::upstreams_json() const
 
 nlohmann::json ReliableRuntime::stats_json() const
 {
-    return {
+    nlohmann::json result = {
         {"accepted", stats_->accepted.load()},
         {"active_sessions", stats_->active_sessions.load()},
         {"backpressure_pauses", stats_->backpressure_pauses.load()},
@@ -1429,7 +1500,34 @@ nlohmann::json ReliableRuntime::stats_json() const
         {"retries", stats_->retries.load()},
         {"upstream_errors", stats_->upstream_errors.load()},
         {"upstream_timeouts", stats_->upstream_timeouts.load()}};
+    // AI-CODE-BEGIN: S9-MANAGEMENT-OBSERVABILITY-SNAPSHOT
+    result["observability"] = observability_->snapshot();
+    // AI-CODE-END: S9-MANAGEMENT-OBSERVABILITY-SNAPSHOT
+    return result;
 }
+
+// AI-CODE-BEGIN: S9-DASHBOARD-SNAPSHOT
+nlohmann::json ReliableRuntime::dashboard_json() const
+{
+    const auto generated_at = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+    return {
+        {"schema_version", 1},
+        {"generated_at", generated_at},
+        {"service", status_json()},
+        {"runtime_stats", {
+            {"accepted", stats_->accepted.load()},
+            {"client_errors", stats_->client_errors.load()},
+            {"upstream_errors", stats_->upstream_errors.load()},
+            {"upstream_timeouts", stats_->upstream_timeouts.load()},
+            {"retries", stats_->retries.load()},
+            {"backpressure_pauses", stats_->backpressure_pauses.load()},
+            {"backpressure_resumes", stats_->backpressure_resumes.load()}}},
+        {"routes", routes_json()},
+        {"upstreams", upstreams_json()},
+        {"metrics", observability_->snapshot()}};
+}
+// AI-CODE-END: S9-DASHBOARD-SNAPSHOT
 
 void ReliableRuntime::request_drain(
     edgegate::net::EventLoop& loop,
@@ -1478,7 +1576,7 @@ void ReliableRuntime::request_stop(
 nlohmann::json ReliableRuntime::reload_configuration() noexcept
 {
     if (config_path_.empty()) {
-        logger_->error("reload", "startup YAML path is unavailable");
+        record_error("reload", "startup YAML path is unavailable");
         return {{"ok", false}, {"error", "reload requires a startup YAML path"}};
     }
 
@@ -1498,13 +1596,18 @@ nlohmann::json ReliableRuntime::reload_configuration() noexcept
                 config_.stream_buffer.low_watermark ||
             replacement.management.enabled != config_.management.enabled ||
             replacement.management.socket_path !=
-                config_.management.socket_path;
+                config_.management.socket_path ||
+            // AI-CODE-BEGIN: S9-IMMUTABLE-DASHBOARD-LISTENER
+            replacement.dashboard.enabled != config_.dashboard.enabled ||
+            replacement.dashboard.address != config_.dashboard.address ||
+            replacement.dashboard.port != config_.dashboard.port;
+            // AI-CODE-END: S9-IMMUTABLE-DASHBOARD-LISTENER
         if (immutable_changed) {
-            logger_->error("reload", "immutable setting changed");
+            record_error("reload", "immutable setting changed");
             return {
                 {"ok", false},
-                {"error", "reload rejected: listen, management socket, limits "
-                          "and stream buffer changes require restart"}};
+                {"error", "reload rejected: listen, management socket, dashboard "
+                          "listener, limits and stream buffer changes require restart"}};
         }
 
         // 所有可能抛异常的对象先在局部变量中完整构造；任何一步失败，
@@ -1517,6 +1620,7 @@ nlohmann::json ReliableRuntime::reload_configuration() noexcept
         config_ = std::move(replacement);
         routes_ = std::move(replacement_routes);
         logger_ = std::move(replacement_logger);
+        observability_->reconfigure(config_.dashboard);
         rebuild_health(Clock::now());
         ++config_generation_;
         return {
@@ -1525,13 +1629,13 @@ nlohmann::json ReliableRuntime::reload_configuration() noexcept
                 {"message", "configuration reloaded"},
                 {"config_generation", config_generation_}}}};
     } catch (const std::exception& error) {
-        logger_->error("reload", error.what());
+        record_error("reload", error.what());
         return {
             {"ok", false},
             {"error", std::string("reload failed; old configuration kept: ") +
                           error.what()}};
     } catch (...) {
-        logger_->error("reload", "unknown exception");
+        record_error("reload", "unknown exception");
         return {
             {"ok", false},
             {"error", "reload failed; old configuration kept"}};
@@ -1577,10 +1681,10 @@ nlohmann::json ReliableRuntime::handle_management_command(
                 (response.value("ok", false) ? "true" : "false"));
         return response;
     } catch (const std::exception& error) {
-        logger_->error("management_command", error.what());
+        record_error("management_command", error.what());
         return {{"ok", false}, {"error", error.what()}};
     } catch (...) {
-        logger_->error("management_command", "unknown exception");
+        record_error("management_command", "unknown exception");
         return {{"ok", false}, {"error", "internal management error"}};
     }
 }
@@ -1792,6 +1896,10 @@ void ReliableRuntime::record_result(
             static_cast<void>(routes_->set_endpoint_health(
                 state.endpoint.address, state.endpoint.port, false));
             ++stats_->health_transitions;
+            // AI-CODE-BEGIN: S9-HEALTH-ERROR-SUMMARY
+            record_error(
+                "health_transition", key + " marked unhealthy");
+            // AI-CODE-END: S9-HEALTH-ERROR-SUMMARY
         }
     }
 }
@@ -1839,6 +1947,10 @@ public:
                 ++runtime_->stats()->accepted;
             } catch (...) {
                 ++runtime_->stats()->client_errors;
+                // AI-CODE-BEGIN: S9-ACCEPT-ERROR-SUMMARY
+                runtime_->record_error(
+                    "client_accept", "failed to create client session");
+                // AI-CODE-END: S9-ACCEPT-ERROR-SUMMARY
             }
         }
     }
@@ -1926,6 +2038,22 @@ public:
                     return runtime->handle_management_command(loop, request);
                 }));
         }
+        // AI-CODE-BEGIN: S9-REGISTER-DASHBOARD-LISTENER
+        if (config.dashboard.enabled) {
+            std::uint16_t dashboard_port = 0;
+            loop_.add(edgegate::runtime::make_dashboard_listener(
+                config.dashboard.address,
+                config.dashboard.port,
+                [runtime = runtime_]() {
+                    return runtime->dashboard_json();
+                },
+                dashboard_port));
+            if (config.dashboard.port != 0 &&
+                dashboard_port != config.dashboard.port) {
+                throw std::runtime_error("dashboard bound unexpected port");
+            }
+        }
+        // AI-CODE-END: S9-REGISTER-DASHBOARD-LISTENER
         // 只有正式服务传入启动配置路径；单元测试中的内存服务器不接管
         // 进程级 SIGTERM/SIGINT，避免改变已有测试进程的信号语义。
         if (!config_path.empty()) {

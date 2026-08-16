@@ -1,4 +1,5 @@
 #include <array>
+#include <chrono>
 #include <cerrno>
 #include <cstdint>
 #include <cstdlib>
@@ -6,6 +7,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <thread>
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -49,6 +51,18 @@ std::uint16_t parse_port(const char* text)
     }
     return static_cast<std::uint16_t>(value);
 }
+
+// AI-CODE-BEGIN: S9-TEST-BACKEND-DELAY
+std::uint32_t parse_delay(const char* text)
+{
+    char* end = nullptr;
+    const unsigned long value = std::strtoul(text, &end, 10);
+    if (end == text || *end != '\0' || value > 60000) {
+        throw std::invalid_argument("delay_ms must be 0..60000");
+    }
+    return static_cast<std::uint32_t>(value);
+}
+// AI-CODE-END: S9-TEST-BACKEND-DELAY
 
 void send_all(int fd, const std::string& response)
 {
@@ -94,7 +108,10 @@ Socket create_listener(std::uint16_t port)
     return listener;
 }
 
-void serve(const std::string& name, std::uint16_t port)
+void serve(
+    const std::string& name,
+    std::uint16_t port,
+    std::uint32_t delay_ms)
 {
     Socket listener = create_listener(port);
     std::cout << name << " listening on 127.0.0.1:" << port << std::endl;
@@ -124,6 +141,12 @@ void serve(const std::string& name, std::uint16_t port)
             }
         }
 
+        // AI-CODE-BEGIN: S9-TEST-BACKEND-DELAY-BEHAVIOR
+        // 阶段9验收用可控延迟制造慢请求；默认0保持阶段6原有行为。
+        if (delay_ms != 0) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
+        }
+        // AI-CODE-END: S9-TEST-BACKEND-DELAY-BEHAVIOR
         const std::string body = name + "\n";
         const std::string response =
             "HTTP/1.1 200 OK\r\n"
@@ -138,12 +161,15 @@ void serve(const std::string& name, std::uint16_t port)
 
 int main(int argc, char* argv[])
 {
-    if (argc != 3) {
-        std::cerr << "Usage: edgegate_test_backend <name> <port>\n";
+    if (argc != 3 && argc != 4) {
+        std::cerr << "Usage: edgegate_test_backend <name> <port> [delay_ms]\n";
         return 2;
     }
     try {
-        serve(argv[1], parse_port(argv[2]));
+        serve(
+            argv[1],
+            parse_port(argv[2]),
+            argc == 4 ? parse_delay(argv[3]) : 0);
     } catch (const std::exception& error) {
         std::cerr << "test backend failed: " << error.what() << '\n';
         return 1;

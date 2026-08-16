@@ -206,7 +206,8 @@ public:
         std::uint16_t listen_port,
         std::uint16_t upstream_port,
         bool valid = true,
-        bool logging_enabled = false)
+        bool logging_enabled = false,
+        std::uint16_t dashboard_port = 0)
     {
         std::ofstream output(yaml_path_, std::ios::trunc);
         if (!valid) {
@@ -226,7 +227,19 @@ public:
             << "  directory: " << log_directory_ << "\n"
             << "  level: info\n"
             << "  max_file_size: 1024\n"
-            << "  max_files: 2\n"
+            << "  max_files: 2\n";
+        if (dashboard_port != 0) {
+            output
+                << "dashboard:\n"
+                << "  enabled: true\n"
+                << "  address: 127.0.0.1\n"
+                << "  port: " << dashboard_port << "\n"
+                << "  refresh_interval_ms: 250\n"
+                << "  recent_error_limit: 5\n"
+                << "  slow_request_threshold_ms: 1\n"
+                << "  slow_request_limit: 5\n";
+        }
+        output
             << "health_check:\n"
             << "  interval_ms: 60000\n"
             << "  timeout_ms: 1000\n"
@@ -352,7 +365,9 @@ private:
     std::thread thread_;
 };
 
-std::string proxy_get(std::uint16_t port)
+std::string proxy_get(
+    std::uint16_t port,
+    std::string_view host = "api.test")
 {
     UniqueFd client(::socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0));
     timeval timeout{2, 0};
@@ -367,7 +382,8 @@ std::string proxy_get(std::uint16_t port)
         throw std::runtime_error("proxy connect failed");
     }
     send_all(client.get(),
-        "GET / HTTP/1.1\r\nHost: api.test\r\nConnection: close\r\n\r\n");
+        "GET / HTTP/1.1\r\nHost: " + std::string(host) +
+        "\r\nConnection: close\r\n\r\n");
     std::string response;
     std::array<char, 1024> bytes{};
     for (;;) {
@@ -382,6 +398,41 @@ std::string proxy_get(std::uint16_t port)
         }
     }
 }
+
+// AI-CODE-BEGIN: S9-DASHBOARD-PROXY-TEST-HELPER
+std::string dashboard_get(std::uint16_t port, std::string_view path)
+{
+    UniqueFd client(::socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0));
+    if (!client) throw std::runtime_error("dashboard client socket failed");
+    timeval timeout{2, 0};
+    static_cast<void>(::setsockopt(
+        client.get(), SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)));
+    sockaddr_in address{};
+    address.sin_family = AF_INET;
+    address.sin_port = htons(port);
+    address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    if (::connect(client.get(), reinterpret_cast<const sockaddr*>(&address),
+                  sizeof(address)) == -1) {
+        throw std::runtime_error("dashboard connect failed");
+    }
+    send_all(client.get(),
+        "GET " + std::string(path) +
+        " HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
+    std::string response;
+    std::array<char, 4096> bytes{};
+    for (;;) {
+        const ssize_t received = ::recv(
+            client.get(), bytes.data(), bytes.size(), 0);
+        if (received > 0) {
+            response.append(bytes.data(), static_cast<std::size_t>(received));
+        } else if (received == 0) {
+            return response;
+        } else if (errno != EINTR) {
+            throw std::runtime_error("dashboard response failed");
+        }
+    }
+}
+// AI-CODE-END: S9-DASHBOARD-PROXY-TEST-HELPER
 
 bool tcp_connect_fails(std::uint16_t port)
 {
@@ -513,6 +564,46 @@ TEST(RuntimeManagementIntegrationTest, DrainDeadlineForceClosesStuckSession)
         std::chrono::seconds(2)));
     proxy.stop_and_join();
 }
+
+// AI-CODE-BEGIN: S9-DASHBOARD-PROXY-INTEGRATION-TEST
+// 测试：真实代理请求完成后，独立 Dashboard 端口应同时给出页面、状态码、
+// 路由/上游统计和最近错误；Dashboard 自己的访问不能计入代理请求数。
+TEST(RuntimeManagementIntegrationTest, DashboardReflectsLiveProxyTraffic)
+{
+    TextBackend backend("dashboard-ok");
+    TemporaryRuntimeFiles files;
+    const std::uint16_t listen_port = reserve_free_port();
+    const std::uint16_t dashboard_port = reserve_free_port();
+    files.write(listen_port, backend.port(), true, false, dashboard_port);
+    auto config = edgegate::config::load_edgegate_config(files.yaml_path());
+    RunningManagedProxy proxy(
+        std::move(config), files.yaml_path(), files.socket_path());
+
+    EXPECT_NE(proxy_get(proxy.port()).find("dashboard-ok"), std::string::npos);
+    EXPECT_EQ(proxy_get(proxy.port(), "missing.test").find(
+                  "HTTP/1.1 404 Not Found\r\n"),
+              0U);
+
+    const std::string page = dashboard_get(dashboard_port, "/");
+    EXPECT_EQ(page.find("HTTP/1.1 200 OK\r\n"), 0U);
+    EXPECT_NE(page.find("EDGEGATE / OBSERVABILITY"), std::string::npos);
+
+    const std::string api = dashboard_get(dashboard_port, "/api/dashboard");
+    const std::size_t body_start = api.find("\r\n\r\n");
+    ASSERT_NE(body_start, std::string::npos);
+    const auto snapshot = nlohmann::json::parse(api.substr(body_start + 4));
+    EXPECT_EQ(snapshot["schema_version"], 1);
+    EXPECT_EQ(snapshot["metrics"]["requests"]["total"], 2);
+    EXPECT_EQ(snapshot["metrics"]["requests"]["status_codes"]["200"], 1);
+    EXPECT_EQ(snapshot["metrics"]["requests"]["status_codes"]["404"], 1);
+    EXPECT_FALSE(snapshot["metrics"]["recent_errors"].empty());
+    ASSERT_EQ(snapshot["routes"].size(), 1U);
+    ASSERT_EQ(snapshot["upstreams"].size(), 1U);
+    ASSERT_EQ(snapshot["metrics"]["upstreams"].size(), 1U);
+    EXPECT_EQ(snapshot["metrics"]["upstreams"][0]["successes"], 1);
+    proxy.stop_and_join();
+}
+// AI-CODE-END: S9-DASHBOARD-PROXY-INTEGRATION-TEST
 
 // 测试：单个日志超过配置容量后应保留当前文件和编号备份，证明使用了轮转
 // sink，而不是让日志无限增长。

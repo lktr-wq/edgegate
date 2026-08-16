@@ -71,6 +71,12 @@
 | `S8-RUNTIME-LOGGER-*` / `S8-ACCESS-LOG-*` | 8 | runtime_logger头源与可靠代理 | 8192条有界异步队列、三类轮转日志、访问/错误/管理记录和敏感字段边界 | 网络线程为何不等待磁盘 | 日志生成与轮转测试通过 |
 | `S8-RUNTIME-MANAGEMENT-INTEGRATION-TESTS` / `S8-RUNTIME-TEST-BUILD` / `S8-RUNTIME-BUILD` | 8 | `tests/runtime_management_integration_test.cpp`、`CMakeLists.txt` | 运行时源码接入，以及Socket权限、查询、reload原子性、排空超时和轮转日志测试 | 结果与内部状态证据是否同时存在 | 7项新增测试；全量117/117 |
 | `S8-CLI-PROCESS-ACCEPTANCE` | 8 | `tests/stage8_cli_acceptance.sh` | 三后端正式进程、CLI、curl、reload/drain/stop/SIGTERM可复现验收和清理 | 单元测试与真实进程验收的边界 | `STAGE8_CLI_ACCEPTANCE=PASS` |
+| `S9-DASHBOARD-CONFIG-*` / `S9-DASHBOARD-EXAMPLE-CONFIG` | 9 | 配置模型、YAML、示例和配置测试 | 独立本机监听、刷新周期、最近错误与慢请求阈值/上限及范围校验 | 为什么监听参数需重启、统计参数可热更 | 三构建 125/125 |
+| `S9-OBSERVABILITY-API` / `S9-OBSERVABILITY-IMPLEMENTATION` | 9 | `include/edgegate/runtime/observability.h`、`src/runtime/observability.cpp` | 状态码、路由、上游聚合，13桶延迟与近似分位数，有界错误/慢请求和双重查询参数脱敏 | 聚合指标与诊断样本为何分开保存 | 单元、集成和隐私验收通过 |
+| `S9-DASHBOARD-SERVER-API` / `S9-DASHBOARD-SERVER-IMPLEMENTATION` | 9 | Dashboard 头源文件 | 非阻塞 TCP Listener、受控只读 HTTP、内嵌原生页面/CSS/JS、JSON 和安全响应头 | 独立端口为何不与代理路由混用 | GET/HEAD、404/405和真实页面资源通过 |
+| `S9-OBSERVABILITY-RUNTIME-*` / `S9-DASHBOARD-SNAPSHOT` / `S9-COMPLETE-REQUEST-METRICS` | 9 | `src/proxy/reliable_proxy_server.cpp` | 请求真正发完后统一记账、路由/上游结果、最近错误、健康转换和版本化 Dashboard 快照 | 为什么不能在“上游刚返回”时算请求完成 | 真实200/404及上游聚合一致 |
+| `S9-OBSERVABILITY-TESTS` / `S9-DASHBOARD-SERVER-TESTS` / `S9-DASHBOARD-PROXY-INTEGRATION-TEST` | 9 | 三份测试及 CMake | 分位桶、有界淘汰、隐私、HTTP只读行为和实时代理指标的自动验证 | 测试是否同时覆盖数字与接口边界 | 8项新增测试；全量125/125 |
+| `S9-TEST-BACKEND-DELAY*` / `S9-DASHBOARD-PROCESS-ACCEPTANCE` | 9 | 测试后端与真实进程脚本 | 可控慢上游及页面、JSON、状态码、路由/上游、慢请求、脱敏、只读端到端验收 | 慢请求证据是否由真实耗时产生 | `STAGE9_DASHBOARD_ACCEPTANCE=PASS` |
 
 ## 贡献边界
 

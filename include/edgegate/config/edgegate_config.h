@@ -50,6 +50,22 @@ struct LoggingConfig {
     std::size_t max_files{5};
 };
 // AI-CODE-END: S8-MANAGEMENT-AND-LOGGING-CONFIG-API
+
+// AI-CODE-BEGIN: S9-DASHBOARD-CONFIG-API
+/*
+ * Dashboard 只提供本机只读页面。慢请求和最近错误都使用有界队列，
+ * 因此服务运行时间再长，也不会因为保存观测记录而无限增长内存。
+ */
+struct DashboardConfig {
+    bool enabled{false};
+    std::string address{"127.0.0.1"};
+    std::uint16_t port{18081};
+    std::uint32_t refresh_interval_ms{1000};
+    std::size_t recent_error_limit{50};
+    std::uint32_t slow_request_threshold_ms{500};
+    std::size_t slow_request_limit{20};
+};
+// AI-CODE-END: S9-DASHBOARD-CONFIG-API
 // AI-CODE-END: S7-RELIABILITY-CONFIG-API
 
 /*
@@ -72,6 +88,9 @@ struct EdgeGateConfig {
     ManagementConfig management;
     LoggingConfig logging;
     // AI-CODE-END: S8-MANAGEMENT-AND-LOGGING-CONFIG-FIELDS
+    // AI-CODE-BEGIN: S9-DASHBOARD-CONFIG-FIELD
+    DashboardConfig dashboard;
+    // AI-CODE-END: S9-DASHBOARD-CONFIG-FIELD
 };
 
 /*

@@ -49,6 +49,18 @@ logging:
   max_files: 5
 # AI-CODE-END: S8-MANAGEMENT-AND-LOGGING-EXAMPLE-CONFIG
 
+# AI-CODE-BEGIN: S9-DASHBOARD-EXAMPLE-CONFIG
+# 只读网页与 JSON 接口使用独立本机端口，不占用 18080 代理路径。
+dashboard:
+  enabled: true
+  address: 127.0.0.1
+  port: 18081
+  refresh_interval_ms: 1000
+  recent_error_limit: 50
+  slow_request_threshold_ms: 500
+  slow_request_limit: 20
+# AI-CODE-END: S9-DASHBOARD-EXAMPLE-CONFIG
+
 # 同一上游池中的健康节点按顺序轮询；阶段7主动健康检查会动态更新状态。
 upstream_pools:
   - id: api_pool
