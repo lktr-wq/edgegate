@@ -1,0 +1,80 @@
+# AI-CODE-BEGIN: S10-PRODUCTION-CONFIG
+# EdgeGate 安装版的安全起点。代理端口和 Dashboard 默认只允许本机访问，
+# 需要对外服务时，由管理员审阅防火墙后再修改 listen.address。
+listen:
+  address: 127.0.0.1
+  port: 18080
+
+limits:
+  max_header_size: 8192
+  max_request_body_size: 1048576
+  max_response_body_size: 8388608
+
+stream_buffer:
+  capacity: 262144
+  high_watermark: 196608
+  low_watermark: 65536
+
+timeouts:
+  client_header_ms: 10000
+  upstream_connect_ms: 2000
+  upstream_header_ms: 5000
+  io_idle_ms: 15000
+  request_total_ms: 60000
+  keep_alive_idle_ms: 30000
+
+health_check:
+  interval_ms: 5000
+  timeout_ms: 1000
+  failure_threshold: 3
+  success_threshold: 2
+  path: /health
+
+# systemd 为低权限 edgegate 用户创建 /run/edgegate。
+management:
+  enabled: true
+  socket_path: /run/edgegate/edgegate.sock
+  drain_timeout_ms: 30000
+
+# systemd 通过 LogsDirectory=edgegate 创建并授权该目录。
+logging:
+  enabled: true
+  directory: /var/log/edgegate
+  level: info
+  max_file_size: 10485760
+  max_files: 5
+
+dashboard:
+  enabled: true
+  address: 127.0.0.1
+  port: 18081
+  refresh_interval_ms: 1000
+  recent_error_limit: 50
+  slow_request_threshold_ms: 500
+  slow_request_limit: 20
+
+# 三个本机上游既能作为新手演示，也方便阶段 11 可重复压测。
+upstream_pools:
+  - id: api_pool
+    endpoints:
+      - id: backend-a
+        address: 127.0.0.1
+        port: 19081
+      - id: backend-b
+        address: 127.0.0.1
+        port: 19082
+      - id: backend-c
+        address: 127.0.0.1
+        port: 19083
+
+routes:
+  - id: api-route
+    host: api.edgegate.test
+    path_prefix: /api
+    upstream_pool: api_pool
+
+  - id: static-route
+    host: "*.edgegate.test"
+    path_prefix: /static
+    upstream_pool: api_pool
+# AI-CODE-END: S10-PRODUCTION-CONFIG

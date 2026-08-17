@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# AI-CODE-BEGIN: S10-SERVICE-INSTALLER
+set -euo pipefail
+
+enable_now=false
+if [[ "${1:-}" == "--enable-now" ]]; then
+    enable_now=true
+elif [[ $# -ne 0 ]]; then
+    echo "Usage: edgegate-service-install [--enable-now]" >&2
+    exit 2
+fi
+
+if [[ "$(id -u)" -ne 0 ]]; then
+    echo "edgegate-service-install must run as root" >&2
+    exit 1
+fi
+
+sample_config="@CMAKE_INSTALL_FULL_DATADIR@/edgegate/examples/edgegate.yaml"
+sysusers_file="@CMAKE_INSTALL_FULL_LIBDIR@/sysusers.d/edgegate.conf"
+tmpfiles_file="@CMAKE_INSTALL_FULL_LIBDIR@/tmpfiles.d/edgegate.conf"
+config_directory="/etc/edgegate"
+config_path="${config_directory}/edgegate.yaml"
+
+for required_file in "${sample_config}" "${sysusers_file}" "${tmpfiles_file}"; do
+    if [[ ! -f "${required_file}" ]]; then
+        echo "Required installed file is missing: ${required_file}" >&2
+        exit 1
+    fi
+done
+
+# sysusers.d 负责低权限账号，tmpfiles.d 负责可写目录及其权限。
+systemd-sysusers "${sysusers_file}"
+install -d -o root -g edgegate -m 0750 "${config_directory}"
+
+if [[ ! -e "${config_path}" ]]; then
+    install -o root -g edgegate -m 0640 "${sample_config}" "${config_path}"
+    echo "Created ${config_path} from the packaged example."
+else
+    echo "Kept existing ${config_path}; it was not overwritten."
+fi
+
+systemd-tmpfiles --create "${tmpfiles_file}"
+systemctl daemon-reload
+
+if [[ "${enable_now}" == true ]]; then
+    systemctl enable --now edgegate.service
+    echo "Enabled and started edgegate.service."
+else
+    echo "Provisioned EdgeGate. Start it with: systemctl enable --now edgegate.service"
+fi
+# AI-CODE-END: S10-SERVICE-INSTALLER

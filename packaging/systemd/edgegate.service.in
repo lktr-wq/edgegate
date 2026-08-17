@@ -1,0 +1,46 @@
+# AI-CODE-BEGIN: S10-SYSTEMD-UNIT
+[Unit]
+Description=EdgeGate HTTP/1.1 reverse proxy
+Documentation=file://@CMAKE_INSTALL_FULL_DOCDIR@/README.md
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=edgegate
+Group=edgegate
+ExecStart=@CMAKE_INSTALL_FULL_BINDIR@/edgegate /etc/edgegate/edgegate.yaml
+ExecReload=@CMAKE_INSTALL_FULL_BINDIR@/edgegatectl --socket /run/edgegate/edgegate.sock reload
+KillSignal=SIGTERM
+TimeoutStopSec=45s
+Restart=on-failure
+RestartSec=2s
+
+# systemd 每次启动时创建低权限用户可写的运行和日志目录。
+RuntimeDirectory=edgegate
+RuntimeDirectoryMode=0750
+LogsDirectory=edgegate
+LogsDirectoryMode=0750
+UMask=0027
+
+# 代理只需要网络、Unix Socket 和指定的两个可写目录。
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_INET AF_UNIX
+CapabilityBoundingSet=
+AmbientCapabilities=
+ReadWritePaths=/run/edgegate /var/log/edgegate
+
+[Install]
+WantedBy=multi-user.target
+# AI-CODE-END: S10-SYSTEMD-UNIT

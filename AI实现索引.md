@@ -77,6 +77,13 @@
 | `S9-OBSERVABILITY-RUNTIME-*` / `S9-DASHBOARD-SNAPSHOT` / `S9-COMPLETE-REQUEST-METRICS` | 9 | `src/proxy/reliable_proxy_server.cpp` | 请求真正发完后统一记账、路由/上游结果、最近错误、健康转换和版本化 Dashboard 快照 | 为什么不能在“上游刚返回”时算请求完成 | 真实200/404及上游聚合一致 |
 | `S9-OBSERVABILITY-TESTS` / `S9-DASHBOARD-SERVER-TESTS` / `S9-DASHBOARD-PROXY-INTEGRATION-TEST` | 9 | 三份测试及 CMake | 分位桶、有界淘汰、隐私、HTTP只读行为和实时代理指标的自动验证 | 测试是否同时覆盖数字与接口边界 | 8项新增测试；全量125/125 |
 | `S9-TEST-BACKEND-DELAY*` / `S9-DASHBOARD-PROCESS-ACCEPTANCE` | 9 | 测试后端与真实进程脚本 | 可控慢上游及页面、JSON、状态码、路由/上游、慢请求、脱敏、只读端到端验收 | 慢请求证据是否由真实耗时产生 | `STAGE9_DASHBOARD_ACCEPTANCE=PASS` |
+| `S10-INSTALL-DIRECTORIES` / `S10-PRODUCT-INSTALL` | 10 | `CMakeLists.txt` | GNU 安装目录、二进制/演示后端/配置/systemd/文档/许可证安装规则和隔离安装 CTest | 为什么示例配置不直接覆盖 `/etc` | 三构建 `126/126` |
+| `S10-PRODUCTION-CONFIG` | 10 | `config/edgegate.production.yaml` | `/run` Socket、`/var/log` 日志、本机监听和三后端的安装版安全起点 | 开发 `/tmp` 配置与正式目录的区别 | 隔离安装与真实服务通过 |
+| `S10-SYSTEMD-UNIT` / `S10-SYSUSERS` / `S10-TMPFILES` | 10 | `packaging/` | 低权限用户、运行/日志目录、systemd 启停/reload/重启和文件系统/capability 加固 | 为什么服务不以 root 运行 | enabled/active，uid/gid 999 |
+| `S10-SERVICE-INSTALLER` | 10 | `scripts/edgegate-service-install.in` | 创建用户和目录、仅首次复制配置、daemon-reload 和可选 enable-now | 重复安装为何不能覆盖生产配置 | `CONFIG_NO_OVERWRITE=PASS` |
+| `S10-README` / `S10-USER-GUIDE` / `S10-ARCHITECTURE` / `S10-TROUBLESHOOTING` | 10 | README 和 `docs/` | 从干净构建到 systemd 展示的新手路径、配置/CLI、内部数据链和按现象排障 | 文档命令是否与真实安装一致 | 安装路径和实机命令已验证 |
+| `S10-INSTALL-LAYOUT-TEST` / `S10-SYSTEMD-ACCEPTANCE` | 10 | 两份阶段 10 Shell 脚本 | DESTDIR 无 root 布局验收，以及真实权限、轮询、CLI、Dashboard、reload/restart/SIGTERM 验收 | `active` 与应用就绪为何不等价 | `STAGE10_SYSTEMD_ACCEPTANCE=PASS` |
+| 无源码标记（标准 MIT 文本） | 10 | `LICENSE` | 按用户确认使用 `lkdr` 与 2026 的标准 MIT License | 发布前再核对版权主体 | 已纳入安装布局 |
 
 ## 贡献边界
 

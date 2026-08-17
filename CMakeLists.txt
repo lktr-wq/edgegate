@@ -10,6 +10,12 @@ project(
     LANGUAGES CXX
 )
 
+# AI-CODE-BEGIN: S10-INSTALL-DIRECTORIES
+# GNUInstallDirs 统一 Linux 安装目录名：默认前缀 /usr/local 下，
+# 程序进入 bin，服务资产进入 lib，文档和示例进入 share。
+include(GNUInstallDirs)
+# AI-CODE-END: S10-INSTALL-DIRECTORIES
+
 # AI-CODE-BEGIN: S6-YAML-DEPENDENCY
 # yaml-cpp 只负责 YAML 语法树；字段、范围和引用关系仍由 EdgeGate 校验。
 find_package(yaml-cpp REQUIRED)
@@ -296,3 +302,83 @@ gtest_discover_tests(
     edgegate_route_tests
 )
 # AI-CODE-END: S6-ROUTE-TABLE-TEST-BUILD
+
+# AI-CODE-BEGIN: S10-PRODUCT-INSTALL
+# systemd 单元和管理脚本需要写入实际安装路径，因此先由 CMake
+# 生成最终文件。更改 CMAKE_INSTALL_PREFIX 时，程序路径会同步更新。
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/packaging")
+configure_file(
+    packaging/systemd/edgegate.service.in
+    "${CMAKE_CURRENT_BINARY_DIR}/packaging/edgegate.service"
+    @ONLY
+)
+configure_file(
+    scripts/edgegate-service-install.in
+    "${CMAKE_CURRENT_BINARY_DIR}/packaging/edgegate-service-install"
+    @ONLY
+)
+
+# 正式对外命令只有代理服务和管理 CLI。
+install(
+    TARGETS edgegate edgegatectl
+    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+)
+
+# 测试后端用于 README 的可重复演示，放到 libexec 而不伪装成产品命令。
+install(
+    TARGETS edgegate_test_backend
+    RUNTIME DESTINATION "${CMAKE_INSTALL_LIBEXECDIR}/edgegate"
+)
+
+# 安装只读示例；真正的 /etc/edgegate/edgegate.yaml 由管理脚本
+# “不存在时才创建”，避免升级覆盖用户配置。
+install(
+    FILES config/edgegate.production.yaml
+    DESTINATION "${CMAKE_INSTALL_DATADIR}/edgegate/examples"
+    RENAME edgegate.yaml
+)
+
+install(
+    FILES "${CMAKE_CURRENT_BINARY_DIR}/packaging/edgegate.service"
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/systemd/system"
+)
+install(
+    FILES packaging/sysusers/edgegate.conf
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/sysusers.d"
+)
+install(
+    FILES packaging/tmpfiles/edgegate.conf
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/tmpfiles.d"
+)
+install(
+    PROGRAMS "${CMAKE_CURRENT_BINARY_DIR}/packaging/edgegate-service-install"
+    DESTINATION "${CMAKE_INSTALL_SBINDIR}"
+)
+
+install(
+    FILES README.md
+    DESTINATION "${CMAKE_INSTALL_DOCDIR}"
+)
+install(
+    FILES
+        docs/user-guide.md
+        docs/architecture.md
+        docs/troubleshooting.md
+    DESTINATION "${CMAKE_INSTALL_DOCDIR}/docs"
+)
+install(
+    FILES LICENSE
+    DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/edgegate"
+)
+
+# 这个 CTest 将安装到临时根目录，验证布局而不修改真实系统。
+find_program(EDGEGATE_BASH_EXECUTABLE bash REQUIRED)
+add_test(
+    NAME stage10_install_layout
+    COMMAND
+        "${EDGEGATE_BASH_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/stage10_install_layout_test.sh"
+        "${CMAKE_CURRENT_SOURCE_DIR}"
+        "${CMAKE_CURRENT_BINARY_DIR}"
+)
+# AI-CODE-END: S10-PRODUCT-INSTALL
