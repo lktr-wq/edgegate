@@ -4,7 +4,7 @@
 # 用法：run_stage11_soak.sh [PROJECT] [BUILD] [DURATION_SECONDS] [ARTIFACT_ROOT]
 set -Eeuo pipefail
 
-project_dir="${1:-/home/zy/projects/edgegate}"
+project_dir="${1:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)}"
 build_dir="${2:-${project_dir}/build-stage11-release}"
 duration_seconds="${3:-43200}"
 artifact_root="${4:-${project_dir}/artifacts/stage11}"

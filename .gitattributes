@@ -1,0 +1,5 @@
+# AI-CODE-BEGIN: S12-LINUX-LINE-ENDINGS
+# Windows 是权威源码端，但 Linux 脚本必须保留 LF，避免 shebang 读到隐藏的 CR 字符。
+*.sh text eol=lf
+*.py text eol=lf
+# AI-CODE-END: S12-LINUX-LINE-ENDINGS

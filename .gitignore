@@ -25,6 +25,10 @@ Testing/
 *.pid
 *.sock
 
+# Python 验收工具的解释器缓存
+__pycache__/
+*.pyc
+
 # 编辑器临时文件
 .vscode/
 .idea/

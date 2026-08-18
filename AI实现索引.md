@@ -89,6 +89,9 @@
 | `S11-LOAD-ACCEPTANCE` / `S11-FAULT-ACCEPTANCE` / `S11-SOAK-RUNNER` | 11 | `tests/`、`bench/run_stage11_soak.sh` | 10万请求、故障注入和无人值守长稳闭环脚本 | 测试前置健康状态和同VM数据边界 | 负载/故障/12小时均 PASS |
 | `S11-NORMAL-KEEPALIVE-*` | 11 | `src/proxy/reliable_proxy_server.cpp`、`tests/reliable_proxy_integration_test.cpp` | 修复正常 Keep-Alive EOF 误计客户端错误并增加回归用例 | 正常空闲关闭与不完整请求中断的区别 | Debug/ASan/UBSan 127/127，二次10万请求为0错误 |
 | `S11-REPORT` | 11 | `docs/stage11-report.md` | 测试环境、负载指标、故障矩阵、缺陷闭环和长稳状态报告 | 同VM数据边界与 RUNNING/PASS 区分 | 阶段11最终报告已定稿 |
+| `S12-RELEASE-NOTES` | 12 | `RELEASE_NOTES.md` | v1.0.0 能力、限制、实测证据、贡献边界和后续候选 | 发布说明为何不能扩大性能与掌握结论 | 三构建 128/128 后定稿 |
+| `S12-RELEASE-METADATA-TEST` / `S12-RELEASE-ACCEPTANCE` | 12 | `CMakeLists.txt`、`tests/stage12_release_acceptance.sh` | 版本一致性、产品路径可移植性、凭据模式和 AI 标记平衡门禁 | 产品测试通过为何不等于发布快照正确 | Release/Debug/Sanitizer 均通过 |
+| `S12-LINUX-LINE-ENDINGS` | 12 | `.gitattributes` | 强制 Shell/Python 文件在 Windows 检出时仍使用 LF | 为什么 Windows 权威源码会影响 Linux shebang | 发布门禁与 Ubuntu 执行通过 |
 
 ## 贡献边界
 

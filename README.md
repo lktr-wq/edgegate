@@ -3,7 +3,7 @@
 
 EdgeGate 是一个使用 C++17 和 Linux POSIX API 实现的 HTTP/1.1 反向代理。它直接使用非阻塞 Socket、LT `epoll`、`timerfd`、`signalfd` 和 Unix Socket，并提供 YAML 路由、健康检查、背压、热重载、轮转日志、管理 CLI 和本机只读 Dashboard。
 
-> 当前版本：`0.1.0`。项目实现和测试已由 AI 主导完成，作者负责产品取舍、证据审核和后续源码复核；这不等同于所有模块均已独立手写或逐行掌握。
+> 当前版本：`1.0.0`。项目实现和测试已由 AI 主导完成，作者负责产品取舍、证据审核和后续源码复核；这不等同于所有模块均已独立手写或逐行掌握。
 
 ## 1. 它解决什么问题
 
@@ -140,7 +140,7 @@ sudo tail -n 20 /var/log/edgegate/error.log
 Dashboard 默认只监听 Ubuntu 本机 `127.0.0.1:18081`。在 Windows PowerShell 建立 SSH 隧道：
 
 ```powershell
-ssh -L 18081:127.0.0.1:18081 zy@192.168.150.129
+ssh -L 18081:127.0.0.1:18081 <ubuntu-user>@<ubuntu-host>
 ```
 
 保持该终端连接，Windows 浏览器打开 `http://127.0.0.1:18081`。无需把 Dashboard 暴露给局域网。
@@ -156,6 +156,8 @@ sudo systemctl restart edgegate
 - [用户手册](docs/user-guide.md)：完整配置项和 CLI。
 - [架构说明](docs/architecture.md)：从 fd 就绪到响应返回的内部链路。
 - [故障排查](docs/troubleshooting.md)：按现象、证据和处理步骤定位问题。
+- [阶段 11 实测报告](docs/stage11-report.md)：压测、故障与 12 小时长稳证据。
+- [v1.0.0 发布说明](RELEASE_NOTES.md)：能力、限制和发布验收结果。
 - [项目计划](项目计划.md)：范围、里程碑和验收边界。
 
 ## 9. 许可证

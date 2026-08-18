@@ -3,7 +3,7 @@
 # 阶段8真实进程验收：三个后端、正式edgegate、edgegatectl、curl和SIGTERM。
 set -euo pipefail
 
-project_dir="${1:-/home/zy/projects/edgegate}"
+project_dir="${1:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)}"
 build_dir="${2:-${project_dir}/build-stage8-debug}"
 temporary_dir="$(mktemp -d /tmp/edgegate-stage8-manual.XXXXXX)"
 backend_pids=()

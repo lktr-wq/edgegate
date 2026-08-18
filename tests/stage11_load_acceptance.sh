@@ -4,7 +4,7 @@
 set -Eeuo pipefail
 trap 'status=$?; echo "STAGE11_LOAD_ACCEPTANCE=FAIL line=${LINENO} command=${BASH_COMMAND} status=${status}" >&2' ERR
 
-project_dir="${1:-/home/zy/projects/edgegate}"
+project_dir="${1:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)}"
 build_dir="${2:-${project_dir}/build-stage11-release}"
 artifact_root="${3:-${project_dir}/artifacts/stage11}"
 run_id="load-$(date -u +%Y%m%dT%H%M%SZ)"

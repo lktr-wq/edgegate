@@ -95,7 +95,7 @@ curl -sS http://127.0.0.1:18081/api/dashboard | jq '.service'
 如果 Ubuntu 正常但 Windows 失败，检查 PowerShell 中的 SSH 隧道是否仍保持连接：
 
 ```powershell
-ssh -L 18081:127.0.0.1:18081 zy@192.168.150.129
+ssh -L 18081:127.0.0.1:18081 <ubuntu-user>@<ubuntu-host>
 ```
 
 不要为解决这个问题而把 Dashboard 直接改成对外网卡监听。
@@ -109,7 +109,7 @@ sudo ls "/proc/${service_pid}/fd" | wc -l
 sudo systemctl show edgegate -p MemoryCurrent -p TasksCurrent
 ```
 
-日志文件应受 `max_file_size` 和 `max_files` 限制。指标中的最近错误和慢请求也是有界队列。阶段 11 还会进行 12 小时长稳和文件描述符泄漏验收，在此之前不应把长稳结论写成已完成。
+日志文件应受 `max_file_size` 和 `max_files` 限制。指标中的最近错误和慢请求也是有界队列。v1.0.0 已完成 12 小时长稳和文件描述符泄漏验收；若修改网络状态机、缓冲区或资源生命周期，仍应重新执行对应验收，不能沿用旧结果。
 
 ## 8. 最小证据包
 

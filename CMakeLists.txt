@@ -2,11 +2,11 @@
 cmake_minimum_required(VERSION 3.22)
 
 #项目名：EdgeGate
-#版本：0.1.0
+#版本：1.0.0
 #使用语言：C++
 project(
     EdgeGate
-    VERSION 0.1.0
+    VERSION 1.0.0
     LANGUAGES CXX
 )
 
@@ -376,6 +376,7 @@ install(
 
 install(
     FILES README.md
+        RELEASE_NOTES.md
     DESTINATION "${CMAKE_INSTALL_DOCDIR}"
 )
 install(
@@ -383,6 +384,7 @@ install(
         docs/user-guide.md
         docs/architecture.md
         docs/troubleshooting.md
+        docs/stage11-report.md
     DESTINATION "${CMAKE_INSTALL_DOCDIR}/docs"
 )
 install(
@@ -401,3 +403,16 @@ add_test(
         "${CMAKE_CURRENT_BINARY_DIR}"
 )
 # AI-CODE-END: S10-PRODUCT-INSTALL
+
+# AI-CODE-BEGIN: S12-RELEASE-METADATA-TEST
+# 发布门禁检查版本、文档、可移植路径和仓库快照卫生。
+# 它不替代 C++ 单元/集成测试，而是阻止“代码通过但发布包信息错误”。
+add_test(
+    NAME stage12_release_metadata
+    COMMAND
+        "${EDGEGATE_BASH_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/stage12_release_acceptance.sh"
+        "${CMAKE_CURRENT_SOURCE_DIR}"
+        "${CMAKE_CURRENT_BINARY_DIR}"
+)
+# AI-CODE-END: S12-RELEASE-METADATA-TEST

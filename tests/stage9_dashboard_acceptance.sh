@@ -3,7 +3,7 @@
 # 阶段9真实进程验收：独立本机端口、静态页面、JSON、聚合指标和有界慢请求。
 set -euo pipefail
 
-project_dir="${1:-/home/zy/projects/edgegate}"
+project_dir="${1:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)}"
 build_dir="${2:-${project_dir}/build-stage9-debug}"
 temporary_dir="$(mktemp -d /tmp/edgegate-stage9-manual.XXXXXX)"
 backend_pids=()

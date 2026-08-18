@@ -26,7 +26,7 @@
 
 ## 3. 100 并发、100,000 请求结果
 
-产物：`/home/zy/projects/edgegate/artifacts/stage11/load-20260817T093754Z`
+原始产物（执行副本相对路径）：`artifacts/stage11/load-20260817T093754Z`
 
 | 指标 | 实测值 |
 |---|---:|
@@ -48,7 +48,7 @@
 
 ## 4. 故障矩阵结果
 
-产物：`/home/zy/projects/edgegate/artifacts/stage11/fault-20260817T093041Z`
+原始产物（执行副本相对路径）：`artifacts/stage11/fault-20260817T093041Z`
 
 - 畸形 Header：400。
 - Header 超过 8192 字节：413。
@@ -86,7 +86,7 @@
 - 启动时间：2026-08-17T09:42:43Z（北京时间 17:42:43）。
 - 目标时长：43,200 秒。
 - Runner PID：14608。
-- 产物目录：`/home/zy/projects/edgegate/artifacts/stage11/soak-20260817T094243Z`。
+- 产物目录（执行副本相对路径）：`artifacts/stage11/soak-20260817T094243Z`。
 - 结束时间：2026-08-17T21:42:51Z（北京时间 2026-08-18 05:42:51）。
 - 最终状态：`PASS`。
 
