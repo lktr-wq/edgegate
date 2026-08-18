@@ -448,5 +448,32 @@ TEST(ReliableProxyIntegrationTest, ActiveHealthCheckExcludesAndRecoversEndpoint)
               std::string::npos);
 }
 
+// AI-CODE-BEGIN: S11-NORMAL-KEEPALIVE-CLOSE-REGRESSION
+// 测试：客户端完成 Keep-Alive 请求后正常 close，连接应被回收但不能误报 client_errors。
+TEST(ReliableProxyIntegrationTest, NormalKeepAliveCloseIsNotClientError)
+{
+    FlexibleBackend backend([](std::string_view) {
+        return "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
+    });
+    RunningReliableProxy proxy(config_for({
+        {"node", "127.0.0.1", backend.port(), true}}));
+    {
+        UniqueFd client = connect_client(proxy.port());
+        send_all(client.get(),
+            "GET / HTTP/1.1\r\nHost: api.test\r\nConnection: keep-alive\r\n\r\n");
+        EXPECT_NE(receive_response(client.get()).find("\r\n\r\nok"),
+                  std::string::npos);
+        ASSERT_TRUE(wait_until([&proxy] {
+            return proxy.stats()->completed_requests.load() == 1;
+        }, std::chrono::seconds(1)));
+    }
+
+    ASSERT_TRUE(wait_until([&proxy] {
+        return proxy.stats()->active_sessions.load() == 0;
+    }, std::chrono::seconds(1)));
+    EXPECT_EQ(proxy.stats()->client_errors.load(), 0U);
+}
+// AI-CODE-END: S11-NORMAL-KEEPALIVE-CLOSE-REGRESSION
+
 } // namespace
 // AI-CODE-END: S7-RELIABLE-PROXY-INTEGRATION-TESTS

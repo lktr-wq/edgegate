@@ -84,6 +84,11 @@
 | `S10-README` / `S10-USER-GUIDE` / `S10-ARCHITECTURE` / `S10-TROUBLESHOOTING` | 10 | README 和 `docs/` | 从干净构建到 systemd 展示的新手路径、配置/CLI、内部数据链和按现象排障 | 文档命令是否与真实安装一致 | 安装路径和实机命令已验证 |
 | `S10-INSTALL-LAYOUT-TEST` / `S10-SYSTEMD-ACCEPTANCE` | 10 | 两份阶段 10 Shell 脚本 | DESTDIR 无 root 布局验收，以及真实权限、轮询、CLI、Dashboard、reload/restart/SIGTERM 验收 | `active` 与应用就绪为何不等价 | `STAGE10_SYSTEMD_ACCEPTANCE=PASS` |
 | 无源码标记（标准 MIT 文本） | 10 | `LICENSE` | 按用户确认使用 `lkdr` 与 2026 的标准 MIT License | 发布前再核对版权主体 | 已纳入安装布局 |
+| `S11-LOAD-GENERATOR*` | 11 | `apps/loadgen_main.cpp`、`CMakeLists.txt` | C++ 多线程客户端、Keep-Alive 响应解析、正文校验、精确延迟分位数和 JSON 报告 | 压测线程为何不等于服务多线程 | 100并发/10万请求全成功 |
+| `S11-RESOURCE-SAMPLER` / `S11-RESOURCE-ANALYZER` | 11 | `bench/sample_process_resources.sh`、`bench/analyze_stage11.py` | CPU/RSS/线程/fd 时序采样、首尾中位数和有界增长判定 | 为什么不能只比较两个瞬时值 | 8599样本覆盖43203秒，最大间隔6秒 |
+| `S11-LOAD-ACCEPTANCE` / `S11-FAULT-ACCEPTANCE` / `S11-SOAK-RUNNER` | 11 | `tests/`、`bench/run_stage11_soak.sh` | 10万请求、故障注入和无人值守长稳闭环脚本 | 测试前置健康状态和同VM数据边界 | 负载/故障/12小时均 PASS |
+| `S11-NORMAL-KEEPALIVE-*` | 11 | `src/proxy/reliable_proxy_server.cpp`、`tests/reliable_proxy_integration_test.cpp` | 修复正常 Keep-Alive EOF 误计客户端错误并增加回归用例 | 正常空闲关闭与不完整请求中断的区别 | Debug/ASan/UBSan 127/127，二次10万请求为0错误 |
+| `S11-REPORT` | 11 | `docs/stage11-report.md` | 测试环境、负载指标、故障矩阵、缺陷闭环和长稳状态报告 | 同VM数据边界与 RUNNING/PASS 区分 | 阶段11最终报告已定稿 |
 
 ## 贡献边界
 

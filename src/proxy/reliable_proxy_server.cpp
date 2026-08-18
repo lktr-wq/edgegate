@@ -575,7 +575,18 @@ void ReliableSession::on_event(
             close_after_response_ = true;
             if (state_ == StreamState::kReadingRequestHead ||
                 !request_body_complete_) {
-                ++runtime_->stats()->client_errors;
+                // AI-CODE-BEGIN: S11-NORMAL-KEEPALIVE-CLOSE-METRIC
+                // 完成请求后停在 Keep-Alive 空闲态，客户端正常关闭读方向不是错误。
+                // 只有已收到下一条请求的部分 Header，或首条请求尚未开始就异常
+                // 半关闭时，才继续记入 client_errors。
+                const bool normal_idle_close =
+                    completed_at_least_one_ &&
+                    state_ == StreamState::kReadingRequestHead &&
+                    request_head_bytes_.empty();
+                if (!normal_idle_close) {
+                    ++runtime_->stats()->client_errors;
+                }
+                // AI-CODE-END: S11-NORMAL-KEEPALIVE-CLOSE-METRIC
                 close_session(loop);
                 return;
             }
@@ -642,10 +653,20 @@ void ReliableSession::read_client(edgegate::net::EventLoop& loop) noexcept
         }
         if (received == 0) {
             client_read_closed_ = true;
-            if (!request_body_complete_) {
+            // AI-CODE-BEGIN: S11-NORMAL-KEEPALIVE-EOF-METRIC
+            const bool normal_idle_close =
+                completed_at_least_one_ &&
+                state_ == StreamState::kReadingRequestHead &&
+                request_head_bytes_.empty();
+            if (!request_body_complete_ && !normal_idle_close) {
                 ++runtime_->stats()->client_errors;
                 close_session(loop);
+            } else if (normal_idle_close) {
+                // recv()==0 是确定的 EOF；立即移除空闲会话，避免 epoll 反复
+                // 报告同一个可读 EOF。
+                close_session(loop);
             }
+            // AI-CODE-END: S11-NORMAL-KEEPALIVE-EOF-METRIC
             return;
         }
         if (errno == EINTR) {

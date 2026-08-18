@@ -174,6 +174,20 @@ add_executable(
 )
 # AI-CODE-END: S6-TEST-BACKEND-BUILD
 
+# AI-CODE-BEGIN: S11-LOAD-GENERATOR-BUILD
+# 阶段11压测器站在客户端视角逐条校验响应，并输出精确延迟分位数。
+# 它是验收工具，不安装为产品命令。
+add_executable(
+    edgegate_loadgen
+    apps/loadgen_main.cpp
+)
+target_link_libraries(
+    edgegate_loadgen
+    PRIVATE
+    nlohmann_json::nlohmann_json
+)
+# AI-CODE-END: S11-LOAD-GENERATOR-BUILD
+
 #启用CTest
 enable_testing()
 
@@ -226,6 +240,11 @@ gtest_discover_tests(
 
 # AI-CODE-BEGIN: S4-REACTOR-TEST-BUILD
 find_package(Threads REQUIRED)
+
+# AI-CODE-BEGIN: S11-LOAD-GENERATOR-THREADS
+# 每个并发客户端由一个阻塞线程模拟；EdgeGate 服务本身仍是单 Reactor。
+target_link_libraries(edgegate_loadgen PRIVATE Threads::Threads)
+# AI-CODE-END: S11-LOAD-GENERATOR-THREADS
 
 add_executable(
     edgegate_reactor_tests
