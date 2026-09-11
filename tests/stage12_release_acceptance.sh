@@ -41,7 +41,7 @@ product_paths=(
 # 产品文件不得依赖某个开发者的家目录、Windows 盘符或固定私网地址。
 if grep -RInE --exclude-dir='build*' --exclude-dir='__pycache__' \
     --exclude='*.log' --exclude='*.pyc' \
-    '(/home/[[:alnum:]_.-]+/projects/edgegate|[A-Za-z]:\\(Users|桌面|Projects)|192\.168\.[0-9]+\.[0-9]+)' \
+    '($HOME/projects/edgegate|[A-Za-z]:\\(Users|桌面|Projects)|192\.168\.[0-9]+\.[0-9]+)' \
     "${product_paths[@]}"; then
     echo 'product-facing files contain a private environment path' >&2
     exit 1
